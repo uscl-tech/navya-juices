@@ -7,6 +7,9 @@ import { motion, useScroll, useTransform, useInView } from "framer-motion"
 import { ArrowRight, Leaf, Droplets, Award, ShieldCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { useCart } from "@/context/cart-context"
+import { getFeaturedProducts } from "@/data/products"
 
 export default function Home() {
   const ref = useRef(null)
@@ -38,23 +41,7 @@ export default function Home() {
     },
   ]
 
-  const products = [
-    {
-      name: "Pure Wheatgrass Shot",
-      price: "$4.99",
-      image: "/vibrant-wheatgrass-shot.png",
-    },
-    {
-      name: "Wheatgrass Cleanse Bundle",
-      price: "$24.99",
-      image: "/vibrant-wheatgrass-display.png",
-    },
-    {
-      name: "Wheatgrass & Mint Fusion",
-      price: "$5.99",
-      image: "/vibrant-wheatgrass-mint.png",
-    },
-  ]
+  const featuredProducts = getFeaturedProducts().slice(0, 3)
 
   const testimonials = [
     {
@@ -79,6 +66,8 @@ export default function Home() {
       avatar: "/serene-stretch.png",
     },
   ]
+
+  const { addItem } = useCart()
 
   return (
     <div className="overflow-hidden">
@@ -115,12 +104,14 @@ export default function Home() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.6, duration: 0.5 }}
             >
-              <Button size="lg" className="rounded-full">
-                Shop Now
-                <ArrowRight className="ml-2 h-4 w-4" />
+              <Button size="lg" className="rounded-full" asChild>
+                <Link href="/products">
+                  Shop Now
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
               </Button>
-              <Button variant="outline" size="lg" className="rounded-full">
-                Learn More
+              <Button variant="outline" size="lg" className="rounded-full" asChild>
+                <Link href="/benefits">Learn More</Link>
               </Button>
             </motion.div>
           </div>
@@ -185,13 +176,15 @@ export default function Home() {
               <h2 className="text-3xl md:text-4xl font-bold">Featured Products</h2>
               <p className="text-muted-foreground mt-2">Our most popular wheatgrass offerings</p>
             </div>
-            <Button variant="ghost" className="mt-4 md:mt-0">
-              View All Products <ArrowRight className="ml-2 h-4 w-4" />
+            <Button variant="ghost" className="mt-4 md:mt-0" asChild>
+              <Link href="/products">
+                View All Products <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
             </Button>
           </div>
 
           <div className="grid md:grid-cols-3 gap-8">
-            {products.map((product, index) => (
+            {featuredProducts.map((product, index) => (
               <motion.div
                 key={index}
                 initial={{ opacity: 0, y: 20 }}
@@ -200,7 +193,7 @@ export default function Home() {
                 viewport={{ once: true }}
                 whileHover={{ y: -5 }}
               >
-                <Link href="/products" className="block">
+                <Link href={`/products/${product.slug}`} className="block">
                   <Card className="overflow-hidden h-full glass-card">
                     <div className="aspect-square relative">
                       <Image
@@ -209,12 +202,27 @@ export default function Home() {
                         fill
                         className="object-cover transition-transform hover:scale-105"
                       />
+                      {product.new && <Badge className="absolute top-2 left-2 bg-primary">New</Badge>}
+                      {product.bestSeller && <Badge className="absolute top-2 right-2 bg-amber-500">Best Seller</Badge>}
                     </div>
                     <CardContent className="p-6">
                       <h3 className="font-semibold text-lg mb-2">{product.name}</h3>
                       <div className="flex items-center justify-between">
                         <p className="font-bold text-primary">{product.price}</p>
-                        <Button variant="ghost" size="sm" className="rounded-full">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="rounded-full"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            addItem({
+                              id: product.id,
+                              name: product.name,
+                              price: product.price,
+                              image: product.image,
+                            })
+                          }}
+                        >
                           Add to Cart
                         </Button>
                       </div>
@@ -285,9 +293,11 @@ export default function Home() {
               <p className="mb-8 text-primary-foreground/80">
                 Start your wellness journey today with Navya's premium wheatgrass juice. Your body will thank you.
               </p>
-              <Button size="lg" variant="secondary" className="rounded-full">
-                Shop Now
-                <ArrowRight className="ml-2 h-4 w-4" />
+              <Button size="lg" variant="secondary" className="rounded-full" asChild>
+                <Link href="/products">
+                  Shop Now
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
               </Button>
             </motion.div>
           </div>

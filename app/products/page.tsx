@@ -2,78 +2,17 @@
 
 import { useState } from "react"
 import Image from "next/image"
+import Link from "next/link"
 import { motion } from "framer-motion"
-import { Filter, ChevronDown } from "lucide-react"
+import { Filter, ChevronDown, ShoppingCart } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-
-const products = [
-  {
-    id: 1,
-    name: "Pure Wheatgrass Shot",
-    price: "$4.99",
-    category: "shots",
-    image: "/vibrant-wheatgrass-shot.png",
-  },
-  {
-    id: 2,
-    name: "Wheatgrass Cleanse Bundle",
-    price: "$24.99",
-    category: "bundles",
-    image: "/vibrant-wheatgrass-display.png",
-  },
-  {
-    id: 3,
-    name: "Wheatgrass & Mint Fusion",
-    price: "$5.99",
-    category: "shots",
-    image: "/vibrant-wheatgrass-mint.png",
-  },
-  {
-    id: 4,
-    name: "Wheatgrass Daily Pack",
-    price: "$19.99",
-    category: "bundles",
-    image: "/placeholder.svg?height=300&width=300&query=wheatgrass%20juice%20pack",
-  },
-  {
-    id: 5,
-    name: "Wheatgrass & Lemon Elixir",
-    price: "$5.99",
-    category: "shots",
-    image: "/placeholder.svg?height=300&width=300&query=wheatgrass%20lemon%20juice",
-  },
-  {
-    id: 6,
-    name: "Wheatgrass Grow Kit",
-    price: "$29.99",
-    category: "accessories",
-    image: "/placeholder.svg?height=300&width=300&query=wheatgrass%20grow%20kit",
-  },
-  {
-    id: 7,
-    name: "Premium Juicer",
-    price: "$89.99",
-    category: "accessories",
-    image: "/placeholder.svg?height=300&width=300&query=wheatgrass%20juicer",
-  },
-  {
-    id: 8,
-    name: "Wheatgrass & Ginger Boost",
-    price: "$5.99",
-    category: "shots",
-    image: "/placeholder.svg?height=300&width=300&query=wheatgrass%20ginger%20juice",
-  },
-  {
-    id: 9,
-    name: "Monthly Subscription Box",
-    price: "$49.99/mo",
-    category: "bundles",
-    image: "/placeholder.svg?height=300&width=300&query=wheatgrass%20subscription%20box",
-  },
-]
+import { Badge } from "@/components/ui/badge"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { useCart } from "@/context/cart-context"
+import { getProductsByCategory } from "@/data/products"
 
 const categories = [
   { value: "all", label: "All Products" },
@@ -92,8 +31,23 @@ const sortOptions = [
 export default function ProductsPage() {
   const [category, setCategory] = useState("all")
   const [sort, setSort] = useState("featured")
+  const { addItem } = useCart()
 
-  const filteredProducts = products.filter((product) => category === "all" || product.category === category)
+  // Get products by category
+  let filteredProducts = getProductsByCategory(category)
+
+  // Sort products
+  filteredProducts = [...filteredProducts].sort((a, b) => {
+    if (sort === "price-asc") {
+      return Number.parseFloat(a.price.replace("$", "")) - Number.parseFloat(b.price.replace("$", ""))
+    } else if (sort === "price-desc") {
+      return Number.parseFloat(b.price.replace("$", "")) - Number.parseFloat(a.price.replace("$", ""))
+    } else if (sort === "newest") {
+      return a.new ? -1 : b.new ? 1 : 0
+    }
+    // Default to featured
+    return a.featured ? -1 : b.featured ? 1 : 0
+  })
 
   return (
     <div className="min-h-screen">
@@ -167,25 +121,50 @@ export default function ProductsPage() {
               transition={{ delay: index * 0.05, duration: 0.3 }}
               whileHover={{ y: -5 }}
             >
-              <Card className="overflow-hidden h-full glass-card">
-                <div className="aspect-square relative">
-                  <Image
-                    src={product.image || "/placeholder.svg"}
-                    alt={product.name}
-                    fill
-                    className="object-cover transition-transform hover:scale-105"
-                  />
-                </div>
-                <CardContent className="p-4">
-                  <h3 className="font-semibold text-lg mb-2">{product.name}</h3>
-                  <div className="flex items-center justify-between">
-                    <p className="font-bold text-primary">{product.price}</p>
-                    <Button size="sm" className="rounded-full">
-                      Add to Cart
-                    </Button>
+              <Link href={`/products/${product.slug}`} className="block">
+                <Card className="overflow-hidden h-full glass-card">
+                  <div className="aspect-square relative">
+                    <Image
+                      src={product.image || "/placeholder.svg"}
+                      alt={product.name}
+                      fill
+                      className="object-cover transition-transform hover:scale-105"
+                    />
+                    {product.new && <Badge className="absolute top-2 left-2 bg-primary">New</Badge>}
+                    {product.bestSeller && <Badge className="absolute top-2 right-2 bg-amber-500">Best Seller</Badge>}
                   </div>
-                </CardContent>
-              </Card>
+                  <CardContent className="p-4">
+                    <h3 className="font-semibold text-lg mb-2">{product.name}</h3>
+                    <div className="flex items-center justify-between">
+                      <p className="font-bold text-primary">{product.price}</p>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="sm"
+                              className="rounded-full"
+                              onClick={(e) => {
+                                e.preventDefault()
+                                addItem({
+                                  id: product.id,
+                                  name: product.name,
+                                  price: product.price,
+                                  image: product.image,
+                                })
+                              }}
+                            >
+                              <ShoppingCart className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Add to Cart</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
             </motion.div>
           ))}
         </div>

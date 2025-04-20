@@ -8,6 +8,7 @@ import { Menu, X, ShoppingCart, Sun, Moon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useTheme } from "next-themes"
 import { useMobile } from "@/hooks/use-mobile"
+import { useCart } from "@/context/cart-context"
 
 const navItems = [
   { name: "Home", href: "/" },
@@ -23,6 +24,7 @@ export function Navbar() {
   const pathname = usePathname()
   const { theme, setTheme } = useTheme()
   const isMobile = useMobile()
+  const { totalItems, setIsOpen: setCartOpen } = useCart()
 
   useEffect(() => {
     const handleScroll = () => {
@@ -50,7 +52,7 @@ export function Navbar() {
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between">
           <div className="flex items-center">
-            <Link href="/" className="flex items-center space-x-2" onClick={() => setIsOpen(false)}>
+            <Link href="/" className="flex items-center space-x-2" onClick={() => setCartOpen(false)}>
               <span className="text-2xl font-bold text-primary">Navya's</span>
             </Link>
           </div>
@@ -75,8 +77,15 @@ export function Navbar() {
               <span className="sr-only">Toggle theme</span>
             </Button>
 
-            <Button variant="ghost" size="icon">
-              <ShoppingCart className="h-5 w-5" />
+            <Button variant="ghost" size="icon" onClick={() => setCartOpen(true)}>
+              <div className="relative">
+                <ShoppingCart className="h-5 w-5" />
+                {totalItems > 0 && (
+                  <span className="absolute -top-2 -right-2 bg-primary text-primary-foreground text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+                    {totalItems}
+                  </span>
+                )}
+              </div>
               <span className="sr-only">Shopping cart</span>
             </Button>
 
