@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label"
 import { useToast } from "@/components/ui/use-toast"
 import { useAuth } from "@/context/auth-context"
 import { getOrders } from "@/app/actions/order-actions"
+import { getProfile, updateProfile } from "@/app/actions/profile-actions"
 import { OrderHistory } from "@/components/order-history"
 
 export default function AccountPage() {
@@ -74,14 +75,22 @@ export default function AccountPage() {
     setIsSaving(true)
 
     try {
-      // Here you would typically save the profile data to Supabase
-      // For now, we'll just simulate a successful save
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      if (user) {
+        const result = await updateProfile(user.id, profileData)
 
-      toast({
-        title: "Profile updated",
-        description: "Your profile information has been saved.",
-      })
+        if (result.success) {
+          toast({
+            title: "Profile updated",
+            description: "Your profile information has been saved.",
+          })
+        } else {
+          toast({
+            title: "Error",
+            description: result.error || "Failed to update profile. Please try again.",
+            variant: "destructive",
+          })
+        }
+      }
     } catch (error) {
       toast({
         title: "Error",
@@ -101,6 +110,26 @@ export default function AccountPage() {
       description: "You have been successfully signed out.",
     })
   }
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      if (user) {
+        const result = await getProfile(user.id)
+        if (result.success && result.profile) {
+          setProfileData({
+            fullName: result.profile.full_name || "",
+            phone: result.profile.phone || "",
+            address: result.profile.address || "",
+            city: result.profile.city || "",
+            postalCode: result.profile.postal_code || "",
+            country: result.profile.country || "",
+          })
+        }
+      }
+    }
+
+    fetchProfile()
+  }, [user])
 
   if (isLoading) {
     return (

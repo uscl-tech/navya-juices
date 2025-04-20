@@ -156,7 +156,12 @@ export default function OrderDetailsPage({ params }: { params: { id: string } })
                 {orderItems.map((item) => (
                   <div key={item.id} className="flex items-center gap-4 py-4 border-b last:border-0">
                     <div className="relative w-16 h-16 rounded overflow-hidden bg-muted">
-                      <Image src="/assorted-products-display.png" alt={item.product_name} fill className="object-cover" />
+                      <Image
+                        src={"/placeholder.svg?height=64&width=64&query=product"}
+                        alt={item.product_name}
+                        fill
+                        className="object-cover"
+                      />
                     </div>
                     <div className="flex-1">
                       <h3 className="font-medium">{item.product_name}</h3>

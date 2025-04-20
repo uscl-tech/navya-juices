@@ -45,11 +45,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setItems((prevItems) => {
       const existingItem = prevItems.find((item) => item.id === newItem.id)
 
+      // Ensure price is in the correct format
+      const formattedPrice = newItem.price.startsWith("$") ? newItem.price : `$${newItem.price}`
+
       if (existingItem) {
         return prevItems.map((item) => (item.id === newItem.id ? { ...item, quantity: item.quantity + 1 } : item))
       }
 
-      return [...prevItems, { ...newItem, quantity: 1 }]
+      return [...prevItems, { ...newItem, price: formattedPrice, quantity: 1 }]
     })
 
     // Open cart drawer when adding items
@@ -78,15 +81,30 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   // Load cart from localStorage on mount
   useEffect(() => {
-    setMounted(true)
-    const storedCart = localStorage.getItem("cart")
-    if (storedCart) {
-      try {
-        setItems(JSON.parse(storedCart))
-      } catch (error) {
-        console.error("Failed to parse cart from localStorage:", error)
+    const loadCart = () => {
+      setMounted(true)
+      const storedCart = localStorage.getItem("cart")
+      if (storedCart) {
+        try {
+          const parsedCart = JSON.parse(storedCart)
+          // Validate the cart data structure
+          if (Array.isArray(parsedCart)) {
+            setItems(parsedCart)
+          } else {
+            // If invalid format, initialize empty cart
+            setItems([])
+            localStorage.setItem("cart", JSON.stringify([]))
+          }
+        } catch (error) {
+          console.error("Failed to parse cart from localStorage:", error)
+          // Reset cart if there's an error
+          setItems([])
+          localStorage.setItem("cart", JSON.stringify([]))
+        }
       }
     }
+
+    loadCart()
   }, [])
 
   // Save cart to localStorage when it changes

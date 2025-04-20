@@ -16,6 +16,7 @@ import { useToast } from "@/components/ui/use-toast"
 import { useCart } from "@/context/cart-context"
 import { useAuth } from "@/context/auth-context"
 import { createOrder } from "@/app/actions/order-actions"
+import { getProfile } from "@/app/actions/profile-actions"
 
 export default function CheckoutPage() {
   const router = useRouter()
@@ -46,16 +47,65 @@ export default function CheckoutPage() {
     }
   }, [user])
 
+  // Add this effect to pre-fill address information from the user's profile
+  useEffect(() => {
+    const loadUserProfile = async () => {
+      if (user) {
+        const result = await getProfile(user.id)
+        if (result.success && result.profile) {
+          // Split the full name into first and last name (best effort)
+          const nameParts = (result.profile.full_name || "").split(" ")
+          const firstName = nameParts[0] || ""
+          const lastName = nameParts.slice(1).join(" ") || ""
+
+          setFormData((prev) => ({
+            ...prev,
+            firstName,
+            lastName,
+            email: user.email || "",
+            phone: result.profile.phone || "",
+            address: result.profile.address || "",
+            city: result.profile.city || "",
+            postalCode: result.profile.postal_code || "",
+            country: result.profile.country || "",
+          }))
+        }
+      }
+    }
+
+    loadUserProfile()
+  }, [user])
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
     setFormData((prev) => ({ ...prev, [name]: value }))
   }
 
+  // Update the handleSubmit function to better handle errors
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsProcessing(true)
 
     try {
+      // Validate form data
+      if (
+        !formData.firstName ||
+        !formData.lastName ||
+        !formData.email ||
+        !formData.address ||
+        !formData.city ||
+        !formData.postalCode ||
+        !formData.country
+      ) {
+        toast({
+          title: "Missing information",
+          description: "Please fill in all required fields.",
+          variant: "destructive",
+        })
+        setIsProcessing(false)
+        return
+      }
+
       // If user is logged in, save order to database
       if (user) {
         const shippingAddress = {
@@ -73,7 +123,7 @@ export default function CheckoutPage() {
         if (!result.success) {
           toast({
             title: "Error processing order",
-            description: result.error,
+            description: result.error || "Failed to create your order. Please try again.",
             variant: "destructive",
           })
           setIsProcessing(false)
@@ -93,6 +143,7 @@ export default function CheckoutPage() {
       clearCart()
       router.push("/checkout/success")
     } catch (error) {
+      console.error("Checkout error:", error)
       toast({
         title: "Error processing order",
         description: "An unexpected error occurred. Please try again.",

@@ -14,13 +14,34 @@ type ShippingAddress = {
   phone?: string
 }
 
+// Update the createOrder function to include better validation
 export async function createOrder(userId: string, items: CartItem[], total: number, shippingAddress: ShippingAddress) {
   try {
+    // Validate inputs
+    if (!userId) {
+      return { success: false, error: "User ID is required" }
+    }
+
+    if (!items || items.length === 0) {
+      return { success: false, error: "No items in cart" }
+    }
+
+    if (
+      !shippingAddress ||
+      !shippingAddress.address ||
+      !shippingAddress.city ||
+      !shippingAddress.postalCode ||
+      !shippingAddress.country
+    ) {
+      return { success: false, error: "Shipping address is incomplete" }
+    }
+
     const supabase = createServerClient()
 
     // Calculate total from items to ensure it matches
     const calculatedTotal = items.reduce((sum, item) => {
-      const price = Number.parseFloat(item.price.replace("$", ""))
+      // Handle price format consistently
+      const price = typeof item.price === "string" ? Number.parseFloat(item.price.replace("$", "")) : item.price
       return sum + price * item.quantity
     }, 0)
 
@@ -50,7 +71,7 @@ export async function createOrder(userId: string, items: CartItem[], total: numb
       order_id: order.id,
       product_id: item.id,
       product_name: item.name,
-      product_price: Number.parseFloat(item.price.replace("$", "")),
+      product_price: typeof item.price === "string" ? Number.parseFloat(item.price.replace("$", "")) : item.price,
       quantity: item.quantity,
     }))
 
@@ -58,6 +79,8 @@ export async function createOrder(userId: string, items: CartItem[], total: numb
 
     if (itemsError) {
       console.error("Error creating order items:", itemsError)
+      // If there's an error with order items, we should delete the order to avoid orphaned records
+      await supabase.from("orders").delete().eq("id", order.id)
       return { success: false, error: itemsError.message }
     }
 
