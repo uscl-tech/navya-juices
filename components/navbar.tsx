@@ -4,11 +4,19 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
-import { Menu, X, ShoppingCart, Sun, Moon } from "lucide-react"
+import { Menu, X, ShoppingCart, Sun, Moon, User, LogIn } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useTheme } from "next-themes"
 import { useMobile } from "@/hooks/use-mobile"
 import { useCart } from "@/context/cart-context"
+import { useAuth } from "@/context/auth-context"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 const navItems = [
   { name: "Home", href: "/" },
@@ -25,6 +33,7 @@ export function Navbar() {
   const { theme, setTheme } = useTheme()
   const isMobile = useMobile()
   const { totalItems, setIsOpen: setCartOpen } = useCart()
+  const { user, signOut } = useAuth()
 
   useEffect(() => {
     const handleScroll = () => {
@@ -44,6 +53,10 @@ export function Navbar() {
       document.body.style.overflow = "auto"
     }
   }, [isOpen, isMobile])
+
+  const handleSignOut = async () => {
+    await signOut()
+  }
 
   return (
     <header
@@ -89,6 +102,34 @@ export function Navbar() {
               <span className="sr-only">Shopping cart</span>
             </Button>
 
+            {user ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon">
+                    <User className="h-5 w-5" />
+                    <span className="sr-only">User menu</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem asChild>
+                    <Link href="/account">My Account</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/account?tab=orders">My Orders</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleSignOut}>Sign Out</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Button variant="ghost" size="icon" asChild>
+                <Link href="/auth/sign-in">
+                  <LogIn className="h-5 w-5" />
+                  <span className="sr-only">Sign in</span>
+                </Link>
+              </Button>
+            )}
+
             <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setIsOpen(!isOpen)}>
               <Menu className="h-6 w-6" />
               <span className="sr-only">Open menu</span>
@@ -129,6 +170,36 @@ export function Navbar() {
                     {item.name}
                   </Link>
                 ))}
+                {user ? (
+                  <>
+                    <Link
+                      href="/account"
+                      className="flex items-center py-3 text-foreground/80"
+                      onClick={() => setIsOpen(false)}
+                    >
+                      <User className="mr-2 h-5 w-5" />
+                      My Account
+                    </Link>
+                    <button
+                      className="flex items-center py-3 text-foreground/80"
+                      onClick={() => {
+                        handleSignOut()
+                        setIsOpen(false)
+                      }}
+                    >
+                      Sign Out
+                    </button>
+                  </>
+                ) : (
+                  <Link
+                    href="/auth/sign-in"
+                    className="flex items-center py-3 text-foreground/80"
+                    onClick={() => setIsOpen(false)}
+                  >
+                    <LogIn className="mr-2 h-5 w-5" />
+                    Sign In
+                  </Link>
+                )}
               </nav>
             </div>
           </motion.div>
