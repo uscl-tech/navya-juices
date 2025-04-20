@@ -1,14 +1,18 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
-import { CheckCircle, ArrowRight } from "lucide-react"
+import { CheckCircle, ArrowRight, ShoppingBag } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
+import { useAuth } from "@/context/auth-context"
 
 export default function CheckoutSuccessPage() {
   const router = useRouter()
+  const { user } = useAuth()
+  const [orderId, setOrderId] = useState<string | null>(null)
 
   // Redirect if user navigates directly to this page
   useEffect(() => {
@@ -17,6 +21,12 @@ export default function CheckoutSuccessPage() {
       const hasOrderData = sessionStorage.getItem("orderComplete")
       if (!hasOrderData) {
         router.push("/")
+      } else {
+        // Get order ID if available
+        const storedOrderId = sessionStorage.getItem("orderId")
+        if (storedOrderId) {
+          setOrderId(storedOrderId)
+        }
       }
     }, 500)
 
@@ -30,6 +40,7 @@ export default function CheckoutSuccessPage() {
     return () => {
       // Clean up when navigating away
       sessionStorage.removeItem("orderComplete")
+      sessionStorage.removeItem("orderId")
     }
   }, [])
 
@@ -55,6 +66,26 @@ export default function CheckoutSuccessPage() {
             Thank you for your purchase. We've received your order and will begin processing it right away. You'll
             receive a confirmation email shortly with your order details.
           </p>
+
+          {user && orderId && (
+            <Card className="mb-8 glass-card">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-center mb-4">
+                  <div className="bg-primary/10 p-3 rounded-full">
+                    <ShoppingBag className="h-6 w-6 text-primary" />
+                  </div>
+                </div>
+                <h3 className="font-semibold mb-2">Order Details</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Your order has been saved to your account. You can view the details and track your order status in
+                  your account dashboard.
+                </p>
+                <Button asChild variant="outline" className="w-full">
+                  <Link href={`/account/orders/${orderId}`}>View Order Details</Link>
+                </Button>
+              </CardContent>
+            </Card>
+          )}
 
           <div className="space-y-4">
             <Button asChild size="lg" className="w-full">

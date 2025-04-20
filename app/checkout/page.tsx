@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
 import { CreditCard, Truck, ShieldCheck } from "lucide-react"
@@ -12,28 +12,94 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Separator } from "@/components/ui/separator"
+import { useToast } from "@/components/ui/use-toast"
 import { useCart } from "@/context/cart-context"
+import { useAuth } from "@/context/auth-context"
+import { createOrder } from "@/app/actions/order-actions"
 
 export default function CheckoutPage() {
   const router = useRouter()
   const { items, subtotal, clearCart } = useCart()
+  const { user } = useAuth()
+  const { toast } = useToast()
   const [isProcessing, setIsProcessing] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState("credit-card")
+  const [formData, setFormData] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    address: "",
+    city: "",
+    postalCode: "",
+    country: "",
+    phone: "",
+  })
 
   // Calculate shipping and total
   const shipping = 4.99
   const total = (Number.parseFloat(subtotal) + shipping).toFixed(2)
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Pre-fill email if user is logged in
+  useEffect(() => {
+    if (user?.email) {
+      setFormData((prev) => ({ ...prev, email: user.email || "" }))
+    }
+  }, [user])
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target
+    setFormData((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsProcessing(true)
 
-    // Simulate payment processing
-    setTimeout(() => {
-      setIsProcessing(false)
+    try {
+      // If user is logged in, save order to database
+      if (user) {
+        const shippingAddress = {
+          fullName: `${formData.firstName} ${formData.lastName}`,
+          email: formData.email,
+          address: formData.address,
+          city: formData.city,
+          postalCode: formData.postalCode,
+          country: formData.country,
+          phone: formData.phone,
+        }
+
+        const result = await createOrder(user.id, items, Number.parseFloat(total), shippingAddress)
+
+        if (!result.success) {
+          toast({
+            title: "Error processing order",
+            description: result.error,
+            variant: "destructive",
+          })
+          setIsProcessing(false)
+          return
+        }
+
+        // Store order ID in session storage for success page
+        sessionStorage.setItem("orderComplete", "true")
+        sessionStorage.setItem("orderId", result.orderId)
+      } else {
+        // For non-logged in users, just simulate order processing
+        await new Promise((resolve) => setTimeout(resolve, 1500))
+        sessionStorage.setItem("orderComplete", "true")
+      }
+
+      // Clear cart and redirect to success page
       clearCart()
       router.push("/checkout/success")
-    }, 2000)
+    } catch (error) {
+      toast({
+        title: "Error processing order",
+        description: "An unexpected error occurred. Please try again.",
+        variant: "destructive",
+      })
+      setIsProcessing(false)
+    }
   }
 
   if (items.length === 0) {
@@ -63,34 +129,63 @@ export default function CheckoutPage() {
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="first-name">First Name</Label>
-                      <Input id="first-name" required />
+                      <Label htmlFor="firstName">First Name</Label>
+                      <Input
+                        id="firstName"
+                        name="firstName"
+                        value={formData.firstName}
+                        onChange={handleChange}
+                        required
+                      />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="last-name">Last Name</Label>
-                      <Input id="last-name" required />
+                      <Label htmlFor="lastName">Last Name</Label>
+                      <Input id="lastName" name="lastName" value={formData.lastName} onChange={handleChange} required />
                     </div>
                   </div>
 
                   <div className="space-y-2">
                     <Label htmlFor="email">Email</Label>
-                    <Input id="email" type="email" required />
+                    <Input
+                      id="email"
+                      name="email"
+                      type="email"
+                      value={formData.email}
+                      onChange={handleChange}
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="phone">Phone Number</Label>
+                    <Input id="phone" name="phone" value={formData.phone} onChange={handleChange} />
                   </div>
 
                   <div className="space-y-2">
                     <Label htmlFor="address">Address</Label>
-                    <Input id="address" required />
+                    <Input id="address" name="address" value={formData.address} onChange={handleChange} required />
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="city">City</Label>
-                      <Input id="city" required />
+                      <Input id="city" name="city" value={formData.city} onChange={handleChange} required />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="postal-code">Postal Code</Label>
-                      <Input id="postal-code" required />
+                      <Label htmlFor="postalCode">Postal Code</Label>
+                      <Input
+                        id="postalCode"
+                        name="postalCode"
+                        value={formData.postalCode}
+                        onChange={handleChange}
+                        required
+                      />
                     </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="country">Country</Label>
+                    <Input id="country" name="country" value={formData.country} onChange={handleChange} required />
                   </div>
                 </CardContent>
 

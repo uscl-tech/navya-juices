@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { User, CreditCard, ShoppingBag, Heart, LogOut, Settings } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,9 +12,12 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/components/ui/use-toast"
 import { useAuth } from "@/context/auth-context"
+import { getOrders } from "@/app/actions/order-actions"
+import { OrderHistory } from "@/components/order-history"
 
 export default function AccountPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { user, signOut, isLoading } = useAuth()
   const { toast } = useToast()
   const [profileData, setProfileData] = useState({
@@ -26,6 +29,11 @@ export default function AccountPage() {
     country: "",
   })
   const [isSaving, setIsSaving] = useState(false)
+  const [orders, setOrders] = useState([])
+  const [isLoadingOrders, setIsLoadingOrders] = useState(false)
+
+  // Get the tab from URL or default to profile
+  const tab = searchParams.get("tab") || "profile"
 
   // Redirect if not logged in
   useEffect(() => {
@@ -33,6 +41,28 @@ export default function AccountPage() {
       router.push("/auth/sign-in")
     }
   }, [user, isLoading, router])
+
+  // Fetch orders when user is available
+  useEffect(() => {
+    const fetchOrders = async () => {
+      if (user) {
+        setIsLoadingOrders(true)
+        const result = await getOrders(user.id)
+        if (result.success) {
+          setOrders(result.orders)
+        } else {
+          toast({
+            title: "Error fetching orders",
+            description: result.error,
+            variant: "destructive",
+          })
+        }
+        setIsLoadingOrders(false)
+      }
+    }
+
+    fetchOrders()
+  }, [user, toast])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
@@ -100,23 +130,43 @@ export default function AccountPage() {
               </CardHeader>
               <CardContent className="p-0">
                 <nav className="flex flex-col">
-                  <Button variant="ghost" className="justify-start rounded-none h-12">
+                  <Button
+                    variant={tab === "profile" ? "default" : "ghost"}
+                    className="justify-start rounded-none h-12"
+                    onClick={() => router.push("/account?tab=profile")}
+                  >
                     <User className="mr-2 h-4 w-4" />
                     Profile
                   </Button>
-                  <Button variant="ghost" className="justify-start rounded-none h-12">
+                  <Button
+                    variant={tab === "orders" ? "default" : "ghost"}
+                    className="justify-start rounded-none h-12"
+                    onClick={() => router.push("/account?tab=orders")}
+                  >
                     <ShoppingBag className="mr-2 h-4 w-4" />
                     Orders
                   </Button>
-                  <Button variant="ghost" className="justify-start rounded-none h-12">
+                  <Button
+                    variant={tab === "payment" ? "default" : "ghost"}
+                    className="justify-start rounded-none h-12"
+                    onClick={() => router.push("/account?tab=payment")}
+                  >
                     <CreditCard className="mr-2 h-4 w-4" />
                     Payment Methods
                   </Button>
-                  <Button variant="ghost" className="justify-start rounded-none h-12">
+                  <Button
+                    variant={tab === "wishlist" ? "default" : "ghost"}
+                    className="justify-start rounded-none h-12"
+                    onClick={() => router.push("/account?tab=wishlist")}
+                  >
                     <Heart className="mr-2 h-4 w-4" />
                     Wishlist
                   </Button>
-                  <Button variant="ghost" className="justify-start rounded-none h-12">
+                  <Button
+                    variant={tab === "settings" ? "default" : "ghost"}
+                    className="justify-start rounded-none h-12"
+                    onClick={() => router.push("/account?tab=settings")}
+                  >
                     <Settings className="mr-2 h-4 w-4" />
                     Settings
                   </Button>
@@ -133,11 +183,17 @@ export default function AccountPage() {
 
           {/* Main Content */}
           <div className="flex-1">
-            <Tabs defaultValue="profile">
+            <Tabs defaultValue={tab}>
               <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="profile">Profile</TabsTrigger>
-                <TabsTrigger value="orders">Orders</TabsTrigger>
-                <TabsTrigger value="settings">Settings</TabsTrigger>
+                <TabsTrigger value="profile" onClick={() => router.push("/account?tab=profile")}>
+                  Profile
+                </TabsTrigger>
+                <TabsTrigger value="orders" onClick={() => router.push("/account?tab=orders")}>
+                  Orders
+                </TabsTrigger>
+                <TabsTrigger value="settings" onClick={() => router.push("/account?tab=settings")}>
+                  Settings
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="profile" className="mt-6">
@@ -206,14 +262,22 @@ export default function AccountPage() {
                     <CardDescription>View your past orders</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-center py-8">
-                      <ShoppingBag className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                      <h3 className="text-lg font-medium mb-2">No orders yet</h3>
-                      <p className="text-muted-foreground mb-4">When you place an order, it will appear here.</p>
-                      <Button asChild>
-                        <a href="/products">Start Shopping</a>
-                      </Button>
-                    </div>
+                    {isLoadingOrders ? (
+                      <div className="flex justify-center py-8">
+                        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary"></div>
+                      </div>
+                    ) : orders.length > 0 ? (
+                      <OrderHistory orders={orders} />
+                    ) : (
+                      <div className="text-center py-8">
+                        <ShoppingBag className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                        <h3 className="text-lg font-medium mb-2">No orders yet</h3>
+                        <p className="text-muted-foreground mb-4">When you place an order, it will appear here.</p>
+                        <Button asChild>
+                          <a href="/products">Start Shopping</a>
+                        </Button>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </TabsContent>
