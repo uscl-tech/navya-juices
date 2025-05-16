@@ -9,6 +9,9 @@ import { Footer } from "@/components/footer"
 import { CartProvider } from "@/context/cart-context"
 import { AuthProvider } from "@/context/auth-context"
 import { Cart } from "@/components/cart"
+import { MobileFooter } from "@/components/mobile-footer"
+// Import the DialogFix component
+import { DialogFix } from "@/components/dialog-fix"
 
 const fontSans = FontSans({
   subsets: ["latin"],
@@ -29,6 +32,7 @@ export const metadata: Metadata = {
     generator: 'v0.dev'
 }
 
+// Add it to the layout
 export default function RootLayout({
   children,
 }: {
@@ -42,9 +46,11 @@ export default function RootLayout({
             <CartProvider>
               <div className="relative flex min-h-screen flex-col">
                 <Navbar />
-                <main className="flex-1">{children}</main>
+                <main className="flex-1 pb-16 md:pb-0">{children}</main>
                 <Footer />
+                <MobileFooter />
                 <Cart />
+                <DialogFix />
               </div>
             </CartProvider>
           </AuthProvider>

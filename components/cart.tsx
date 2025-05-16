@@ -5,6 +5,14 @@ import { motion, AnimatePresence } from "framer-motion"
 import { X, Plus, Minus, ShoppingBag } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useCart } from "@/context/cart-context"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 
 interface CartItemProps {
   id: number
@@ -124,5 +132,51 @@ export const Cart = () => {
         </motion.div>
       )}
     </AnimatePresence>
+  )
+}
+
+export const CartDialog = () => {
+  const { items, totalItems, subtotal } = useCart()
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button variant="outline">
+          <ShoppingBag className="mr-2 h-4 w-4" />
+          Cart ({totalItems})
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>Shopping Cart</DialogTitle>
+          <DialogDescription>Review the items in your shopping cart and proceed to checkout.</DialogDescription>
+        </DialogHeader>
+
+        {items.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full">
+            <ShoppingBag className="h-12 w-12 text-gray-400 mb-4" />
+            <p className="text-gray-500">Your cart is empty.</p>
+          </div>
+        ) : (
+          <ul>
+            {items.map((item) => (
+              <li key={item.id}>
+                <CartItem {...item} />
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <div className="p-4 border-t border-gray-200">
+          <div className="flex items-center justify-between mb-4">
+            <p className="font-semibold">Subtotal:</p>
+            <p className="text-xl font-bold">${subtotal}</p>
+          </div>
+          <Button className="w-full" size="lg" asChild>
+            <Link href="/checkout">Checkout</Link>
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
