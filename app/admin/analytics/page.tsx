@@ -5,24 +5,92 @@ import { createServerSupabase } from "@/lib/supabase"
 export default async function AnalyticsPage() {
   const supabase = createServerSupabase()
 
-  // Get order statistics
-  const { data: orderStats } = await supabase.rpc("get_order_stats")
+  // Get order statistics using direct SQL queries instead of RPC
+  const { data: orderStats } = await supabase
+    .from("orders")
+    .select("*")
+    .then((result) => {
+      const orders = result.data || []
+      const totalOrders = orders.length
+      const totalRevenue = orders.reduce((sum, order) => sum + Number(order.total), 0)
+      const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0
 
-  // Get top products
+      return {
+        data: {
+          total_orders: totalOrders,
+          total_revenue: totalRevenue.toFixed(2),
+          average_order_value: averageOrderValue.toFixed(2),
+        },
+      }
+    })
+
+  // Get top products using proper group_by syntax
   const { data: topProducts } = await supabase
     .from("order_items")
     .select(`
       product_id,
-      products:product_id (name),
-      total_quantity:quantity(sum),
-      total_revenue:product_price(sum)
+      product_name,
+      quantity,
+      product_price
     `)
-    .group("product_id, products.name")
-    .order("total_quantity", { ascending: false })
-    .limit(5)
+    .then((result) => {
+      const items = result.data || []
+
+      // Manually group and aggregate the data
+      const productMap = new Map()
+
+      items.forEach((item) => {
+        const productId = item.product_id
+        if (!productMap.has(productId)) {
+          productMap.set(productId, {
+            product_id: productId,
+            product_name: item.product_name,
+            total_quantity: 0,
+            total_revenue: 0,
+          })
+        }
+
+        const product = productMap.get(productId)
+        product.total_quantity += item.quantity
+        product.total_revenue += Number(item.product_price) * item.quantity
+      })
+
+      // Convert map to array and sort by quantity
+      const topProducts = Array.from(productMap.values())
+        .sort((a, b) => b.total_quantity - a.total_quantity)
+        .slice(0, 5)
+
+      return { data: topProducts }
+    })
 
   // Get user statistics
-  const { data: userStats } = await supabase.rpc("get_user_stats")
+  const { data: userStats } = await supabase
+    .from("profiles")
+    .select("*")
+    .then((result) => {
+      const users = result.data || []
+      const totalUsers = users.length
+
+      // Get users created in the last 30 days
+      const thirtyDaysAgo = new Date()
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+
+      const newUsers30d = users.filter((user) => {
+        const createdAt = new Date(user.created_at)
+        return createdAt >= thirtyDaysAgo
+      }).length
+
+      // Count active users (this is a placeholder - define "active" as needed)
+      const activeUsers = users.length // Placeholder
+
+      return {
+        data: {
+          total_users: totalUsers,
+          new_users_30d: newUsers30d,
+          active_users: activeUsers,
+        },
+      }
+    })
 
   return (
     <div>
@@ -62,7 +130,7 @@ export default async function AnalyticsPage() {
                 <CardTitle className="text-sm font-medium">Average Order Value</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">${orderStats?.average_order_value?.toFixed(2) || 0}</div>
+                <div className="text-2xl font-bold">${orderStats?.average_order_value || 0}</div>
                 <p className="text-xs text-gray-500">+4.3% from last month</p>
               </CardContent>
             </Card>
@@ -100,7 +168,7 @@ export default async function AnalyticsPage() {
                   {topProducts?.map((product) => (
                     <tr key={product.product_id}>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {product.products?.name}
+                        {product.product_name}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{product.total_quantity}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
