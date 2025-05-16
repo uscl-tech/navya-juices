@@ -1,6 +1,8 @@
 "use client"
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
+import { getSupabase } from "@/lib/supabase"
+import { useAuth } from "./auth-context"
 
 export type CartItem = {
   id: number
@@ -20,6 +22,7 @@ type CartContextType = {
   setIsOpen: (isOpen: boolean) => void
   totalItems: number
   subtotal: string
+  isSyncing: boolean
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined)
@@ -28,6 +31,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([])
   const [isOpen, setIsOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const [isSyncing, setIsSyncing] = useState(false)
+  const { user } = useAuth()
+  const supabase = getSupabase()
 
   // Calculate total items in cart
   const totalItems = items.reduce((total, item) => total + item.quantity, 0)
@@ -40,19 +46,119 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }, 0)
     .toFixed(2)
 
+  // Load cart from localStorage or Supabase on mount
+  useEffect(() => {
+    const loadCart = async () => {
+      setMounted(true)
+
+      if (user) {
+        // If user is logged in, load cart from Supabase
+        setIsSyncing(true)
+        try {
+          const { data, error } = await supabase.from("cart_items").select("*, products(*)").eq("user_id", user.id)
+
+          if (error) {
+            console.error("Error loading cart from Supabase:", error)
+          } else if (data && data.length > 0) {
+            // Convert Supabase data to CartItem format
+            const cartItems: CartItem[] = data.map((item) => ({
+              id: item.product_id,
+              name: item.products.name,
+              price: `$${item.products.price.toFixed(2)}`,
+              image: item.products.image_url,
+              quantity: item.quantity,
+            }))
+            setItems(cartItems)
+          } else {
+            // If no items in Supabase but items in localStorage, sync localStorage to Supabase
+            const storedCart = localStorage.getItem("cart")
+            if (storedCart) {
+              try {
+                const localItems = JSON.parse(storedCart)
+                setItems(localItems)
+
+                // Sync to Supabase
+                for (const item of localItems) {
+                  await supabase.from("cart_items").upsert({
+                    user_id: user.id,
+                    product_id: item.id,
+                    quantity: item.quantity,
+                  })
+                }
+              } catch (error) {
+                console.error("Failed to parse cart from localStorage:", error)
+              }
+            }
+          }
+        } catch (error) {
+          console.error("Error in loadCart:", error)
+        } finally {
+          setIsSyncing(false)
+        }
+      } else {
+        // If no user, load from localStorage
+        const storedCart = localStorage.getItem("cart")
+        if (storedCart) {
+          try {
+            setItems(JSON.parse(storedCart))
+          } catch (error) {
+            console.error("Failed to parse cart from localStorage:", error)
+          }
+        }
+      }
+    }
+
+    loadCart()
+  }, [user])
+
+  // Save cart to localStorage when it changes
+  useEffect(() => {
+    if (mounted) {
+      localStorage.setItem("cart", JSON.stringify(items))
+    }
+  }, [items, mounted])
+
+  // Sync cart to Supabase when it changes and user is logged in
+  useEffect(() => {
+    const syncCartToSupabase = async () => {
+      if (!user || !mounted || isSyncing) return
+
+      setIsSyncing(true)
+
+      try {
+        // First, delete all existing items
+        await supabase.from("cart_items").delete().eq("user_id", user.id)
+
+        // Then insert all current items
+        if (items.length > 0) {
+          const cartData = items.map((item) => ({
+            user_id: user.id,
+            product_id: item.id,
+            quantity: item.quantity,
+          }))
+
+          await supabase.from("cart_items").insert(cartData)
+        }
+      } catch (error) {
+        console.error("Error syncing cart to Supabase:", error)
+      } finally {
+        setIsSyncing(false)
+      }
+    }
+
+    syncCartToSupabase()
+  }, [items, user, mounted, isSyncing])
+
   // Add item to cart
   const addItem = (newItem: Omit<CartItem, "quantity">) => {
     setItems((prevItems) => {
       const existingItem = prevItems.find((item) => item.id === newItem.id)
 
-      // Ensure price is in the correct format
-      const formattedPrice = newItem.price.startsWith("$") ? newItem.price : `$${newItem.price}`
-
       if (existingItem) {
         return prevItems.map((item) => (item.id === newItem.id ? { ...item, quantity: item.quantity + 1 } : item))
       }
 
-      return [...prevItems, { ...newItem, price: formattedPrice, quantity: 1 }]
+      return [...prevItems, { ...newItem, quantity: 1 }]
     })
 
     // Open cart drawer when adding items
@@ -79,41 +185,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setItems([])
   }
 
-  // Load cart from localStorage on mount
-  useEffect(() => {
-    const loadCart = () => {
-      setMounted(true)
-      const storedCart = localStorage.getItem("cart")
-      if (storedCart) {
-        try {
-          const parsedCart = JSON.parse(storedCart)
-          // Validate the cart data structure
-          if (Array.isArray(parsedCart)) {
-            setItems(parsedCart)
-          } else {
-            // If invalid format, initialize empty cart
-            setItems([])
-            localStorage.setItem("cart", JSON.stringify([]))
-          }
-        } catch (error) {
-          console.error("Failed to parse cart from localStorage:", error)
-          // Reset cart if there's an error
-          setItems([])
-          localStorage.setItem("cart", JSON.stringify([]))
-        }
-      }
-    }
-
-    loadCart()
-  }, [])
-
-  // Save cart to localStorage when it changes
-  useEffect(() => {
-    if (mounted) {
-      localStorage.setItem("cart", JSON.stringify(items))
-    }
-  }, [items, mounted])
-
   return (
     <CartContext.Provider
       value={{
@@ -126,6 +197,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         setIsOpen,
         totalItems,
         subtotal,
+        isSyncing,
       }}
     >
       {children}

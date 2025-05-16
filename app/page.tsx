@@ -4,12 +4,14 @@ import { useRef } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { motion, useScroll, useTransform, useInView } from "framer-motion"
-import { ArrowRight, Leaf, Droplets, Award, ShieldCheck } from "lucide-react"
+import { ArrowRight, Leaf, Droplets, Award, ShieldCheck, Trophy } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { useCart } from "@/context/cart-context"
 import { getFeaturedProducts } from "@/data/products"
+import { getFeaturedChallenges } from "@/data/challenges"
+import { ChallengeCard } from "@/components/challenge-card"
 
 export default function Home() {
   const ref = useRef(null)
@@ -42,6 +44,7 @@ export default function Home() {
   ]
 
   const featuredProducts = getFeaturedProducts().slice(0, 3)
+  const featuredChallenges = getFeaturedChallenges()
 
   const testimonials = [
     {
@@ -235,8 +238,48 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Featured Challenges */}
+      <section className="py-20 bg-muted/30">
+        <div className="container px-4">
+          <div className="flex flex-col md:flex-row justify-between items-center mb-12">
+            <div>
+              <h2 className="text-3xl md:text-4xl font-bold">Wheatgrass Challenges</h2>
+              <p className="text-muted-foreground mt-2">Transform your health with our structured juice challenges</p>
+            </div>
+            <Button variant="ghost" className="mt-4 md:mt-0" asChild>
+              <Link href="/challenges">
+                View All Challenges <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-8">
+            {featuredChallenges.map((challenge, index) => (
+              <ChallengeCard key={challenge.id} challenge={challenge} index={index} />
+            ))}
+          </div>
+
+          <div className="mt-12 text-center">
+            <div className="inline-flex items-center justify-center rounded-full bg-primary/10 p-3 mb-4">
+              <Trophy className="h-8 w-8 text-primary" />
+            </div>
+            <h3 className="text-2xl font-bold mb-4">Why Take a Challenge?</h3>
+            <p className="text-muted-foreground max-w-2xl mx-auto mb-6">
+              Consistency is key to experiencing the full benefits of wheatgrass. Our structured challenges help you
+              establish a healthy habit while maximizing results.
+            </p>
+            <Button size="lg" asChild>
+              <Link href="/challenges">
+                Explore Challenges
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+        </div>
+      </section>
+
       {/* Testimonials */}
-      <section className="py-20 bg-muted/50">
+      <section className="py-20">
         <div className="container px-4">
           <div className="text-center max-w-3xl mx-auto mb-16">
             <h2 className="text-3xl md:text-4xl font-bold mb-4">What Our Customers Say</h2>

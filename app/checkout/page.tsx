@@ -5,152 +5,122 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
-import { CreditCard, Truck, ShieldCheck } from "lucide-react"
+import { Truck, ShieldCheck, MapPin, CreditCardIcon, Banknote } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Separator } from "@/components/ui/separator"
-import { useToast } from "@/components/ui/use-toast"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Label } from "@/components/ui/label"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useCart } from "@/context/cart-context"
 import { useAuth } from "@/context/auth-context"
-import { createOrder } from "@/app/actions/order-actions"
-import { getProfile } from "@/app/actions/profile-actions"
+import { AddressList } from "@/components/address/address-list"
+import { AddressForm, type AddressFormValues } from "@/components/address/address-form"
+import { getSupabase } from "@/lib/supabase"
+
+type Address = AddressFormValues & {
+  id: string
+}
 
 export default function CheckoutPage() {
   const router = useRouter()
   const { items, subtotal, clearCart } = useCart()
-  const { user } = useAuth()
-  const { toast } = useToast()
+  const { user, isLoading: authLoading } = useAuth()
   const [isProcessing, setIsProcessing] = useState(false)
-  const [paymentMethod, setPaymentMethod] = useState("credit-card")
-  const [formData, setFormData] = useState({
-    firstName: "",
-    lastName: "",
-    email: "",
-    address: "",
-    city: "",
-    postalCode: "",
-    country: "",
-    phone: "",
-  })
+  const [paymentMethod, setPaymentMethod] = useState("cod")
+  const [addressMode, setAddressMode] = useState<"select" | "new">("select")
+  const [selectedAddress, setSelectedAddress] = useState<Address | null>(null)
+  const [checkoutError, setCheckoutError] = useState<string | null>(null)
+  const supabase = getSupabase()
 
   // Calculate shipping and total
   const shipping = 4.99
   const total = (Number.parseFloat(subtotal) + shipping).toFixed(2)
 
-  // Pre-fill email if user is logged in
   useEffect(() => {
-    if (user?.email) {
-      setFormData((prev) => ({ ...prev, email: user.email || "" }))
+    if (!authLoading && !user) {
+      router.push("/login?redirect=/checkout")
     }
-  }, [user])
+  }, [user, authLoading, router])
 
-  // Add this effect to pre-fill address information from the user's profile
-  useEffect(() => {
-    const loadUserProfile = async () => {
-      if (user) {
-        const result = await getProfile(user.id)
-        if (result.success && result.profile) {
-          // Split the full name into first and last name (best effort)
-          const nameParts = (result.profile.full_name || "").split(" ")
-          const firstName = nameParts[0] || ""
-          const lastName = nameParts.slice(1).join(" ") || ""
-
-          setFormData((prev) => ({
-            ...prev,
-            firstName,
-            lastName,
-            email: user.email || "",
-            phone: result.profile.phone || "",
-            address: result.profile.address || "",
-            city: result.profile.city || "",
-            postalCode: result.profile.postal_code || "",
-            country: result.profile.country || "",
-          }))
-        }
-      }
-    }
-
-    loadUserProfile()
-  }, [user])
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target
-    setFormData((prev) => ({ ...prev, [name]: value }))
+  const handleAddressSelect = (address: Address) => {
+    setSelectedAddress(address)
   }
 
-  // Update the handleSubmit function to better handle errors
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setCheckoutError(null)
+
+    if (!user) {
+      setCheckoutError("You must be logged in to place an order")
+      return
+    }
+
+    if (!selectedAddress && addressMode === "select") {
+      setCheckoutError("Please select a shipping address")
+      return
+    }
+
     setIsProcessing(true)
 
     try {
-      // Validate form data
-      if (
-        !formData.firstName ||
-        !formData.lastName ||
-        !formData.email ||
-        !formData.address ||
-        !formData.city ||
-        !formData.postalCode ||
-        !formData.country
-      ) {
-        toast({
-          title: "Missing information",
-          description: "Please fill in all required fields.",
-          variant: "destructive",
+      // Create the order in Supabase
+      const { data: orderData, error: orderError } = await supabase
+        .from("orders")
+        .insert({
+          user_id: user.id,
+          status: "pending",
+          payment_method: paymentMethod,
+          subtotal: Number.parseFloat(subtotal),
+          shipping_fee: shipping,
+          total: Number.parseFloat(total),
+          shipping_address: selectedAddress,
         })
-        setIsProcessing(false)
-        return
+        .select()
+
+      if (orderError) {
+        throw orderError
       }
 
-      // If user is logged in, save order to database
-      if (user) {
-        const shippingAddress = {
-          fullName: `${formData.firstName} ${formData.lastName}`,
-          email: formData.email,
-          address: formData.address,
-          city: formData.city,
-          postalCode: formData.postalCode,
-          country: formData.country,
-          phone: formData.phone,
-        }
+      const orderId = orderData[0].id
 
-        const result = await createOrder(user.id, items, Number.parseFloat(total), shippingAddress)
+      // Create order items
+      const orderItems = items.map((item) => ({
+        order_id: orderId,
+        product_id: item.id,
+        product_name: item.name,
+        product_price: Number.parseFloat(item.price.replace("$", "")),
+        quantity: item.quantity,
+      }))
 
-        if (!result.success) {
-          toast({
-            title: "Error processing order",
-            description: result.error || "Failed to create your order. Please try again.",
-            variant: "destructive",
-          })
-          setIsProcessing(false)
-          return
-        }
+      const { error: itemsError } = await supabase.from("order_items").insert(orderItems)
 
-        // Store order ID in session storage for success page
-        sessionStorage.setItem("orderComplete", "true")
-        sessionStorage.setItem("orderId", result.orderId)
-      } else {
-        // For non-logged in users, just simulate order processing
-        await new Promise((resolve) => setTimeout(resolve, 1500))
-        sessionStorage.setItem("orderComplete", "true")
+      if (itemsError) {
+        throw itemsError
       }
 
-      // Clear cart and redirect to success page
+      // Clear the cart
       clearCart()
-      router.push("/checkout/success")
-    } catch (error) {
+
+      // Redirect to success page
+      router.push(`/checkout/success?order_id=${orderId}`)
+    } catch (error: any) {
       console.error("Checkout error:", error)
-      toast({
-        title: "Error processing order",
-        description: "An unexpected error occurred. Please try again.",
-        variant: "destructive",
-      })
+      setCheckoutError(error.message || "An error occurred during checkout. Please try again.")
       setIsProcessing(false)
     }
+  }
+
+  if (authLoading) {
+    return (
+      <div className="container py-20 text-center">
+        <h1 className="text-3xl font-bold mb-4">Loading...</h1>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return null // Will redirect in useEffect
   }
 
   if (items.length === 0) {
@@ -172,124 +142,74 @@ export default function CheckoutPage() {
           {/* Checkout Form */}
           <div className="md:col-span-2">
             <form onSubmit={handleSubmit}>
+              {checkoutError && <div className="bg-red-50 p-4 rounded-md text-red-800 mb-4">{checkoutError}</div>}
+
+              <Card className="mb-8">
+                <CardHeader>
+                  <CardTitle>Shipping Address</CardTitle>
+                  <CardDescription>Select or add a shipping address</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Tabs defaultValue="select" onValueChange={(value) => setAddressMode(value as "select" | "new")}>
+                    <TabsList className="grid w-full grid-cols-2">
+                      <TabsTrigger value="select">Select Address</TabsTrigger>
+                      <TabsTrigger value="new">Add New Address</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="select" className="pt-4">
+                      <AddressList onSelect={handleAddressSelect} selectable />
+                    </TabsContent>
+                    <TabsContent value="new" className="pt-4">
+                      <AddressForm
+                        onSuccess={(newAddress) => {
+                          setAddressMode("select")
+                        }}
+                      />
+                    </TabsContent>
+                  </Tabs>
+                </CardContent>
+              </Card>
+
               <Card>
                 <CardHeader>
-                  <CardTitle>Shipping Information</CardTitle>
-                  <CardDescription>Enter your shipping details</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="firstName">First Name</Label>
-                      <Input
-                        id="firstName"
-                        name="firstName"
-                        value={formData.firstName}
-                        onChange={handleChange}
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="lastName">Last Name</Label>
-                      <Input id="lastName" name="lastName" value={formData.lastName} onChange={handleChange} required />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input
-                      id="email"
-                      name="email"
-                      type="email"
-                      value={formData.email}
-                      onChange={handleChange}
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="phone">Phone Number</Label>
-                    <Input id="phone" name="phone" value={formData.phone} onChange={handleChange} />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="address">Address</Label>
-                    <Input id="address" name="address" value={formData.address} onChange={handleChange} required />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="city">City</Label>
-                      <Input id="city" name="city" value={formData.city} onChange={handleChange} required />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="postalCode">Postal Code</Label>
-                      <Input
-                        id="postalCode"
-                        name="postalCode"
-                        value={formData.postalCode}
-                        onChange={handleChange}
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="country">Country</Label>
-                    <Input id="country" name="country" value={formData.country} onChange={handleChange} required />
-                  </div>
-                </CardContent>
-
-                <CardHeader className="pt-6">
                   <CardTitle>Payment Method</CardTitle>
                   <CardDescription>Select your preferred payment method</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <RadioGroup value={paymentMethod} onValueChange={setPaymentMethod} className="space-y-4">
                     <div className="flex items-center space-x-2 border p-4 rounded-md">
-                      <RadioGroupItem value="credit-card" id="credit-card" />
-                      <Label htmlFor="credit-card" className="flex items-center gap-2 cursor-pointer">
-                        <CreditCard className="h-5 w-5" />
-                        Credit / Debit Card
+                      <RadioGroupItem value="cod" id="cod" />
+                      <Label htmlFor="cod" className="flex items-center gap-2 cursor-pointer">
+                        <Banknote className="h-5 w-5" />
+                        Cash on Delivery
                       </Label>
                     </div>
                     <div className="flex items-center space-x-2 border p-4 rounded-md">
-                      <RadioGroupItem value="paypal" id="paypal" />
-                      <Label htmlFor="paypal" className="cursor-pointer">
-                        PayPal
+                      <RadioGroupItem value="card" id="card" disabled />
+                      <Label htmlFor="card" className="flex items-center gap-2 cursor-pointer opacity-50">
+                        <CreditCardIcon className="h-5 w-5" />
+                        Credit / Debit Card (Coming Soon)
                       </Label>
                     </div>
                   </RadioGroup>
 
-                  {paymentMethod === "credit-card" && (
+                  {paymentMethod === "cod" && (
                     <motion.div
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: "auto" }}
                       exit={{ opacity: 0, height: 0 }}
-                      className="space-y-4 mt-4"
+                      className="mt-4 p-4 bg-amber-50 rounded-md"
                     >
-                      <div className="space-y-2">
-                        <Label htmlFor="card-number">Card Number</Label>
-                        <Input id="card-number" placeholder="1234 5678 9012 3456" required />
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="expiry">Expiry Date</Label>
-                          <Input id="expiry" placeholder="MM/YY" required />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="cvc">CVC</Label>
-                          <Input id="cvc" placeholder="123" required />
-                        </div>
-                      </div>
+                      <p className="text-amber-800 text-sm">
+                        <strong>Cash on Delivery:</strong> Pay with cash when your order is delivered. Our delivery
+                        person will collect the payment at the time of delivery.
+                      </p>
                     </motion.div>
                   )}
                 </CardContent>
 
                 <CardFooter>
                   <Button type="submit" className="w-full" size="lg" disabled={isProcessing}>
-                    {isProcessing ? "Processing..." : `Pay $${total}`}
+                    {isProcessing ? "Processing..." : `Place Order - $${total}`}
                   </Button>
                 </CardFooter>
               </Card>
@@ -337,11 +257,15 @@ export default function CheckoutPage() {
                 <div className="space-y-3 pt-4">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <ShieldCheck className="h-4 w-4 text-primary" />
-                    <span>Secure payment processing</span>
+                    <span>Secure checkout process</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Truck className="h-4 w-4 text-primary" />
                     <span>Fast shipping (2-3 business days)</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <MapPin className="h-4 w-4 text-primary" />
+                    <span>Free shipping on orders over $50</span>
                   </div>
                 </div>
               </CardContent>

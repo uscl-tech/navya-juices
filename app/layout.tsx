@@ -9,7 +9,6 @@ import { Footer } from "@/components/footer"
 import { CartProvider } from "@/context/cart-context"
 import { AuthProvider } from "@/context/auth-context"
 import { Cart } from "@/components/cart"
-import { Toaster } from "@/components/ui/toaster"
 
 const fontSans = FontSans({
   subsets: ["latin"],
@@ -47,7 +46,6 @@ export default function RootLayout({
                 <Footer />
                 <Cart />
               </div>
-              <Toaster />
             </CartProvider>
           </AuthProvider>
         </ThemeProvider>
