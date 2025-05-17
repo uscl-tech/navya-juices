@@ -1,9 +1,7 @@
 "use client"
 
-import type React from "react"
-
-import { useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { z } from "zod"
 import { useForm } from "react-hook-form"
@@ -28,9 +26,14 @@ export function LoginForm() {
   const [isLoading, setIsLoading] = useState(false)
   const { signIn, user } = useAuth()
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
+  const [redirectPath, setRedirectPath] = useState<string | null>(null)
+
+  // Get redirect path from URL on component mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const redirect = params.get("redirect")
+    setRedirectPath(redirect)
+  }, [])
 
   const {
     register,
@@ -40,16 +43,15 @@ export function LoginForm() {
     resolver: zodResolver(loginSchema),
   })
 
-  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
+  const onSubmit = async (data: LoginFormValues) => {
     setIsLoading(true)
-    setError("")
+    setError(null)
 
     try {
-      const { error } = await signIn(email, password)
+      const { error } = await signIn(data.email, data.password)
 
       if (error) {
-        setError(error.message || "Failed to sign in")
+        setError(error.message)
         return
       }
 
@@ -60,7 +62,6 @@ export function LoginForm() {
       // Redirect based on role and redirect param
       if (profile?.role === "admin") {
         // If admin, redirect to admin dashboard or specified admin page
-        const redirectPath = searchParams.get("redirect")
         if (redirectPath && redirectPath.startsWith("/admin")) {
           router.push(redirectPath)
         } else {
@@ -68,7 +69,6 @@ export function LoginForm() {
         }
       } else {
         // For regular users, redirect to account or specified non-admin page
-        const redirectPath = searchParams.get("redirect")
         if (redirectPath && !redirectPath.startsWith("/admin")) {
           router.push(redirectPath)
         } else {
@@ -77,7 +77,7 @@ export function LoginForm() {
       }
     } catch (err) {
       console.error("Login error:", err)
-      setError("An unexpected error occurred")
+      setError("An unexpected error occurred. Please try again.")
     } finally {
       setIsLoading(false)
     }
@@ -90,7 +90,7 @@ export function LoginForm() {
         <CardDescription>Enter your email and password to access your account</CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={onSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
@@ -99,14 +99,7 @@ export function LoginForm() {
 
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              disabled={isLoading}
-            />
+            <Input id="email" type="email" placeholder="you@example.com" {...register("email")} disabled={isLoading} />
             {errors.email && <p className="text-sm text-red-500">{errors.email.message}</p>}
           </div>
 
@@ -121,8 +114,7 @@ export function LoginForm() {
               id="password"
               type="password"
               placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              {...register("password")}
               disabled={isLoading}
             />
             {errors.password && <p className="text-sm text-red-500">{errors.password.message}</p>}
