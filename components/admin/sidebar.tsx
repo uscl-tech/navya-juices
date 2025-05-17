@@ -2,120 +2,89 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { getSupabase } from "@/lib/supabase"
-import { useRouter } from "next/navigation"
 import { LayoutDashboard, ShoppingCart, Users, Package, Award, BarChart, Settings, LogOut } from "lucide-react"
+import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
+import { useAuth } from "@/context/auth-context"
 
 export function AdminSidebar() {
   const pathname = usePathname()
-  const router = useRouter()
+  const { signOut } = useAuth()
 
-  const isActive = (path: string) => {
-    return pathname === path || pathname?.startsWith(`${path}/`)
-  }
-
-  const handleSignOut = async () => {
-    const supabase = getSupabase()
-    await supabase.auth.signOut()
-    router.push("/login")
-  }
+  const navItems = [
+    {
+      title: "Dashboard",
+      href: "/admin",
+      icon: LayoutDashboard,
+    },
+    {
+      title: "Orders",
+      href: "/admin/orders",
+      icon: ShoppingCart,
+    },
+    {
+      title: "Users",
+      href: "/admin/users",
+      icon: Users,
+    },
+    {
+      title: "Products",
+      href: "/admin/products",
+      icon: Package,
+    },
+    {
+      title: "Challenges",
+      href: "/admin/challenges",
+      icon: Award,
+    },
+    {
+      title: "Analytics",
+      href: "/admin/analytics",
+      icon: BarChart,
+    },
+    {
+      title: "Settings",
+      href: "/admin/settings",
+      icon: Settings,
+    },
+  ]
 
   return (
-    <div className="w-64 bg-white border-r border-gray-200 min-h-screen">
+    <div className="w-64 bg-white border-r h-screen sticky top-0 overflow-y-auto hidden md:block">
       <div className="p-6">
-        <h1 className="text-xl font-bold text-green-600">Admin Dashboard</h1>
+        <Link href="/" className="flex items-center">
+          <span className="text-xl font-bold text-primary">Navya's Admin</span>
+        </Link>
       </div>
-      <nav className="mt-6">
-        <ul className="space-y-2 px-4">
-          <li>
-            <Link
-              href="/admin"
-              className={`flex items-center p-3 rounded-md ${
-                isActive("/admin") && pathname === "/admin"
-                  ? "bg-green-50 text-green-600"
-                  : "text-gray-700 hover:bg-gray-100"
-              }`}
-            >
-              <LayoutDashboard className="w-5 h-5 mr-3" />
-              Dashboard
-            </Link>
-          </li>
-          <li>
-            <Link
-              href="/admin/orders"
-              className={`flex items-center p-3 rounded-md ${
-                isActive("/admin/orders") ? "bg-green-50 text-green-600" : "text-gray-700 hover:bg-gray-100"
-              }`}
-            >
-              <ShoppingCart className="w-5 h-5 mr-3" />
-              Orders
-            </Link>
-          </li>
-          <li>
-            <Link
-              href="/admin/products"
-              className={`flex items-center p-3 rounded-md ${
-                isActive("/admin/products") ? "bg-green-50 text-green-600" : "text-gray-700 hover:bg-gray-100"
-              }`}
-            >
-              <Package className="w-5 h-5 mr-3" />
-              Products
-            </Link>
-          </li>
-          <li>
-            <Link
-              href="/admin/users"
-              className={`flex items-center p-3 rounded-md ${
-                isActive("/admin/users") ? "bg-green-50 text-green-600" : "text-gray-700 hover:bg-gray-100"
-              }`}
-            >
-              <Users className="w-5 h-5 mr-3" />
-              Users
-            </Link>
-          </li>
-          <li>
-            <Link
-              href="/admin/challenges"
-              className={`flex items-center p-3 rounded-md ${
-                isActive("/admin/challenges") ? "bg-green-50 text-green-600" : "text-gray-700 hover:bg-gray-100"
-              }`}
-            >
-              <Award className="w-5 h-5 mr-3" />
-              Challenges
-            </Link>
-          </li>
-          <li>
-            <Link
-              href="/admin/analytics"
-              className={`flex items-center p-3 rounded-md ${
-                isActive("/admin/analytics") ? "bg-green-50 text-green-600" : "text-gray-700 hover:bg-gray-100"
-              }`}
-            >
-              <BarChart className="w-5 h-5 mr-3" />
-              Analytics
-            </Link>
-          </li>
-          <li>
-            <Link
-              href="/admin/settings"
-              className={`flex items-center p-3 rounded-md ${
-                isActive("/admin/settings") ? "bg-green-50 text-green-600" : "text-gray-700 hover:bg-gray-100"
-              }`}
-            >
-              <Settings className="w-5 h-5 mr-3" />
-              Settings
-            </Link>
-          </li>
+      <nav className="px-4 pb-6">
+        <ul className="space-y-1">
+          {navItems.map((item) => (
+            <li key={item.href}>
+              <Link
+                href={item.href}
+                className={cn(
+                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium",
+                  pathname === item.href || (item.href !== "/admin" && pathname?.startsWith(item.href))
+                    ? "bg-primary/10 text-primary"
+                    : "text-gray-500 hover:bg-gray-100",
+                )}
+              >
+                <item.icon className="h-5 w-5" />
+                {item.title}
+              </Link>
+            </li>
+          ))}
         </ul>
       </nav>
-      <div className="absolute bottom-0 w-64 p-4 border-t border-gray-200">
-        <button
-          onClick={handleSignOut}
-          className="flex items-center p-3 w-full text-left rounded-md text-gray-700 hover:bg-gray-100"
+      <div className="px-4 mt-auto">
+        <Button
+          variant="outline"
+          className="w-full justify-start gap-2 text-red-500 hover:text-red-600 hover:bg-red-50"
+          onClick={() => signOut()}
         >
-          <LogOut className="w-5 h-5 mr-3" />
+          <LogOut className="h-4 w-4" />
           Sign Out
-        </button>
+        </Button>
       </div>
     </div>
   )
