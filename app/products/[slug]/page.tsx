@@ -5,7 +5,7 @@ import { notFound, useRouter } from "next/navigation"
 import Image from "next/image"
 import Link from "next/link"
 import { motion } from "framer-motion"
-import { ArrowLeft, Check, Info, ShoppingCart, Star, Edit, Trash2, ShieldAlert } from "lucide-react" // Added Edit, Trash2, ShieldAlert
+import { ArrowLeft, Check, Info, Star, Edit, Trash2, ShieldAlert } from "lucide-react" // Added Edit, Trash2, ShieldAlert
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
@@ -28,6 +28,7 @@ import { useCart } from "@/context/cart-context"
 import { useAuth } from "@/context/auth-context" // Added useAuth
 // import { deleteProductAction } from "@/app/admin/products/actions"; // Assuming you have this server action
 import { useToast } from "@/hooks/use-toast"
+import { AddToCartButton } from "@/components/add-to-cart-button"
 
 export default function ProductPage({ params }: { params: { slug: string } }) {
   const router = useRouter()
@@ -196,10 +197,7 @@ export default function ProductPage({ params }: { params: { slug: string } }) {
 
           {userRole !== "admin" ? (
             <div className="flex flex-col sm:flex-row gap-4 mb-8">
-              <Button size="lg" className="flex-1" onClick={handleAddToCart}>
-                <ShoppingCart className="mr-2 h-5 w-5" />
-                Add to Cart
-              </Button>
+              <AddToCartButton product={product} className="flex-1" buttonText="Add to Cart" />
               <Button size="lg" variant="outline" className="flex-1">
                 Subscribe & Save 15%
               </Button>
@@ -342,25 +340,14 @@ export default function ProductPage({ params }: { params: { slug: string } }) {
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <Button
-                              size="sm"
+                            <AddToCartButton
+                              product={relatedProduct}
+                              quantity={1}
                               className="rounded-full"
-                              onClick={(e) => {
-                                e.preventDefault() // Prevent link navigation
-                                addItem({
-                                  id: relatedProduct.id,
-                                  name: relatedProduct.name,
-                                  price: relatedProduct.price,
-                                  image: relatedProduct.image,
-                                })
-                                toast({
-                                  title: "Added to cart!",
-                                  description: `${relatedProduct.name} has been added to your cart.`,
-                                })
-                              }}
-                            >
-                              <ShoppingCart className="h-4 w-4" />
-                            </Button>
+                              showIcon={true}
+                              buttonText="" // To only show the icon
+                              onClick={(e) => e.preventDefault()} // Keep this if it's inside a Link
+                            />
                           </TooltipTrigger>
                           <TooltipContent>
                             <p>Add to Cart</p>

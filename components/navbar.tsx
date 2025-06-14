@@ -25,7 +25,8 @@ export function Navbar() {
   const pathname = usePathname()
   const { theme, setTheme } = useTheme()
   const isMobile = useMobile()
-  const { totalItems, setIsOpen: setCartOpen } = useCart()
+  const { getItemCount, setIsOpen: setCartOpen } = useCart()
+  const currentItemCount = getItemCount()
   const { user, userRole, signOut } = useAuth()
 
   const baseNavItems = [
@@ -92,17 +93,18 @@ export function Navbar() {
               <span className="sr-only">Toggle theme</span>
             </Button>
 
-            <Button variant="ghost" size="icon" onClick={() => setCartOpen(true)}>
-              <div className="relative">
-                <ShoppingCart className="h-5 w-5" />
-                {totalItems > 0 && (
-                  <span className="absolute -top-2 -right-2 bg-primary text-primary-foreground text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
-                    {totalItems}
-                  </span>
-                )}
-              </div>
-              <span className="sr-only">Shopping cart</span>
-            </Button>
+            <Link href="/cart" passHref>
+              <Button variant="ghost" size="icon" aria-label="Shopping cart">
+                <div className="relative">
+                  <ShoppingCart className="h-5 w-5" />
+                  {currentItemCount > 0 && (
+                    <span className="absolute -top-2 -right-2 bg-primary text-primary-foreground text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+                      {currentItemCount}
+                    </span>
+                  )}
+                </div>
+              </Button>
+            </Link>
 
             {user ? (
               <>
@@ -170,6 +172,15 @@ export function Navbar() {
                     {item.name}
                   </Link>
                 ))}
+                <Link
+                  href="/cart"
+                  className={`flex items-center py-3 ${
+                    pathname === "/cart" ? "text-primary font-medium" : "text-foreground/80"
+                  }`}
+                  onClick={() => setIsOpen(false)}
+                >
+                  Cart ({currentItemCount})
+                </Link>
                 {user ? (
                   <>
                     <Link
