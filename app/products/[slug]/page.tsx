@@ -5,23 +5,40 @@ import { notFound, useRouter } from "next/navigation"
 import Image from "next/image"
 import Link from "next/link"
 import { motion } from "framer-motion"
-import { ArrowLeft, Check, Info, ShoppingCart, Star } from "lucide-react"
+import { ArrowLeft, Check, Info, ShoppingCart, Star, Edit, Trash2, ShieldAlert } from "lucide-react" // Added Edit, Trash2, ShieldAlert
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Card, CardContent } from "@/components/ui/card"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog" // Added AlertDialog
 import { getProductBySlug, getRelatedProducts } from "@/data/products"
 import { useCart } from "@/context/cart-context"
+import { useAuth } from "@/context/auth-context" // Added useAuth
+// import { deleteProductAction } from "@/app/admin/products/actions"; // Assuming you have this server action
+import { useToast } from "@/hooks/use-toast"
 
 export default function ProductPage({ params }: { params: { slug: string } }) {
   const router = useRouter()
   const product = getProductBySlug(params.slug)
   const relatedProducts = product ? getRelatedProducts(product.id) : []
   const { addItem } = useCart()
+  const { userRole } = useAuth() // Get user role
+  const { toast } = useToast()
 
   const [selectedImage, setSelectedImage] = useState(0)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   if (!product) {
     notFound()
@@ -34,14 +51,74 @@ export default function ProductPage({ params }: { params: { slug: string } }) {
       price: product.price,
       image: product.image,
     })
+    toast({
+      title: "Added to cart!",
+      description: `${product.name} has been added to your cart.`,
+    })
+  }
+
+  const handleDeleteProduct = async () => {
+    if (userRole !== "admin" || !product) return
+    setIsDeleting(true)
+    // const result = await deleteProductAction(product.id); // Replace with actual server action
+    // For demo, simulate deletion
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+    const result = { success: true, message: "Product deleted successfully (simulated)." }
+
+    if (result.success) {
+      toast({
+        title: "Product Deleted",
+        description: result.message || `${product.name} has been deleted.`,
+      })
+      router.push("/products")
+    } else {
+      toast({
+        title: "Error Deleting Product",
+        description: result.message || "Could not delete the product.",
+        variant: "destructive",
+      })
+    }
+    setIsDeleting(false)
   }
 
   return (
     <div className="container py-8 md:py-12">
-      <Button variant="ghost" className="mb-6 pl-0" onClick={() => router.back()}>
-        <ArrowLeft className="mr-2 h-4 w-4" />
-        Back
-      </Button>
+      <div className="flex justify-between items-center mb-6">
+        <Button variant="ghost" className="pl-0" onClick={() => router.back()}>
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back
+        </Button>
+        {userRole === "admin" && product && (
+          <div className="flex gap-2">
+            <Button asChild variant="outline">
+              <Link href={`/admin/products/${product.id}`}>
+                <Edit className="mr-2 h-4 w-4" /> Edit Product
+              </Link>
+            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive">
+                  <Trash2 className="mr-2 h-4 w-4" /> Delete Product
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This action cannot be undone. This will permanently delete the product "{product.name}".
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDeleteProduct} disabled={isDeleting}>
+                    {isDeleting ? "Deleting..." : "Yes, delete product"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        )}
+      </div>
 
       <div className="grid md:grid-cols-2 gap-8 lg:gap-12">
         {/* Product Images */}
@@ -117,15 +194,29 @@ export default function ProductPage({ params }: { params: { slug: string } }) {
             )}
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-4 mb-8">
-            <Button size="lg" className="flex-1" onClick={handleAddToCart}>
-              <ShoppingCart className="mr-2 h-5 w-5" />
-              Add to Cart
-            </Button>
-            <Button size="lg" variant="outline" className="flex-1">
-              Subscribe & Save 15%
-            </Button>
-          </div>
+          {userRole !== "admin" ? (
+            <div className="flex flex-col sm:flex-row gap-4 mb-8">
+              <Button size="lg" className="flex-1" onClick={handleAddToCart}>
+                <ShoppingCart className="mr-2 h-5 w-5" />
+                Add to Cart
+              </Button>
+              <Button size="lg" variant="outline" className="flex-1">
+                Subscribe & Save 15%
+              </Button>
+            </div>
+          ) : (
+            <Card className="mb-8 border-amber-500 bg-amber-50/50">
+              <CardContent className="p-4 flex items-center gap-3">
+                <ShieldAlert className="h-8 w-8 text-amber-600" />
+                <div>
+                  <h3 className="font-semibold text-amber-700">Admin View</h3>
+                  <p className="text-sm text-amber-600">
+                    You are viewing this page as an admin. Customer actions like "Add to Cart" are hidden.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           <Tabs defaultValue="nutrition" className="w-full">
             <TabsList className="grid w-full grid-cols-2">
@@ -217,49 +308,68 @@ export default function ProductPage({ params }: { params: { slug: string } }) {
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
             {relatedProducts.map((relatedProduct) => (
               <motion.div key={relatedProduct.id} whileHover={{ y: -5 }} transition={{ duration: 0.2 }}>
-                <Link href={`/products/${relatedProduct.slug}`}>
-                  <Card className="overflow-hidden h-full glass-card">
+                <Card className="overflow-hidden h-full glass-card group">
+                  <Link href={`/products/${relatedProduct.slug}`} className="block">
                     <div className="aspect-square relative">
                       <Image
                         src={relatedProduct.image || "/placeholder.svg"}
                         alt={relatedProduct.name}
                         fill
-                        className="object-cover transition-transform hover:scale-105"
+                        className="object-cover transition-transform group-hover:scale-105"
                       />
                       {relatedProduct.new && <Badge className="absolute top-2 left-2 bg-primary">New</Badge>}
+                      {userRole === "admin" && (
+                        <Button
+                          asChild
+                          size="sm"
+                          variant="secondary"
+                          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={(e) => e.stopPropagation()} // Prevent link navigation
+                        >
+                          <Link href={`/admin/products/${relatedProduct.id}`}>
+                            <Edit className="h-3 w-3" />
+                          </Link>
+                        </Button>
+                      )}
                     </div>
-                    <CardContent className="p-4">
+                  </Link>
+                  <CardContent className="p-4">
+                    <Link href={`/products/${relatedProduct.slug}`} className="block">
                       <h3 className="font-semibold text-lg mb-2">{relatedProduct.name}</h3>
-                      <div className="flex items-center justify-between">
-                        <p className="font-bold text-primary">{relatedProduct.price}</p>
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                size="sm"
-                                className="rounded-full"
-                                onClick={(e) => {
-                                  e.preventDefault()
-                                  addItem({
-                                    id: relatedProduct.id,
-                                    name: relatedProduct.name,
-                                    price: relatedProduct.price,
-                                    image: relatedProduct.image,
-                                  })
-                                }}
-                              >
-                                <ShoppingCart className="h-4 w-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Add to Cart</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </Link>
+                    </Link>
+                    <div className="flex items-center justify-between">
+                      <p className="font-bold text-primary">{relatedProduct.price}</p>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="sm"
+                              className="rounded-full"
+                              onClick={(e) => {
+                                e.preventDefault() // Prevent link navigation
+                                addItem({
+                                  id: relatedProduct.id,
+                                  name: relatedProduct.name,
+                                  price: relatedProduct.price,
+                                  image: relatedProduct.image,
+                                })
+                                toast({
+                                  title: "Added to cart!",
+                                  description: `${relatedProduct.name} has been added to your cart.`,
+                                })
+                              }}
+                            >
+                              <ShoppingCart className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Add to Cart</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                  </CardContent>
+                </Card>
               </motion.div>
             ))}
           </div>

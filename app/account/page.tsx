@@ -3,13 +3,13 @@
 import { useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { User, MapPin, Package, CreditCard, LogOut, Trophy } from "lucide-react"
+import { User, MapPin, Package, CreditCard, LogOut, Trophy, Edit3 } from "lucide-react" // Added Edit3
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { useAuth } from "@/context/auth-context"
 
 export default function AccountPage() {
-  const { user, isLoading, signOut } = useAuth()
+  const { user, isLoading, signOut, userRole } = useAuth() // Added userRole
   const router = useRouter()
 
   useEffect(() => {
@@ -23,24 +23,39 @@ export default function AccountPage() {
     router.push("/")
   }
 
-  if (isLoading) {
+  if (isLoading || !user) {
+    // Combined loading and no-user check
     return (
       <div className="container py-12">
         <div className="max-w-4xl mx-auto">
           <h1 className="text-3xl font-bold mb-8">Loading...</h1>
+          {/* You could add a ProfileSkeleton here */}
         </div>
       </div>
     )
   }
 
-  if (!user) {
-    return null // Will redirect in useEffect
-  }
-
   return (
     <div className="container py-12">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold mb-8">My Account</h1>
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-3xl font-bold">My Account</h1>
+          {/* Example: Edit Profile button, could lead to a separate page or modal */}
+          <Button variant="outline" onClick={() => alert("Edit Profile clicked!")}>
+            <Edit3 className="mr-2 h-4 w-4" /> Edit Profile
+          </Button>
+        </div>
+
+        {userRole === "admin" && (
+          <Card className="mb-6 border-blue-500 bg-blue-50/50">
+            <CardContent className="p-4">
+              <p className="text-sm text-blue-700">
+                You are viewing this account page as an <strong>Admin</strong>. Additional admin-specific profile
+                management options could be displayed here or on a dedicated admin user management page.
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         <div className="grid gap-6 md:grid-cols-2">
           <Card>
@@ -56,6 +71,9 @@ export default function AccountPage() {
                 <p className="font-medium">{user.email}</p>
                 <p className="text-sm text-muted-foreground">
                   Member since {new Date(user.created_at || Date.now()).toLocaleDateString()}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Role: <span className="font-semibold capitalize">{userRole || "Customer"}</span>
                 </p>
               </div>
             </CardContent>

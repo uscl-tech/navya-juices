@@ -1,211 +1,309 @@
 "use client"
 
-import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
-import { getSupabase } from "@/lib/supabase"
-import { useAuth } from "./auth-context"
+import type { Product } from "@/types/supabase"
+import type React from "react"
+import { createContext, useContext, useEffect, useState, useCallback } from "react"
+import { useAuth } from "./auth-context" // To get user status
+import { getSupabase } from "@/lib/supabase" // For client-side Supabase
+import { useToast } from "@/components/ui/use-toast"
 
-export type CartItem = {
-  id: number
-  name: string
-  price: string
-  image: string
+export interface CartItem extends Product {
   quantity: number
 }
 
-type CartContextType = {
-  items: CartItem[]
-  addItem: (item: Omit<CartItem, "quantity">) => void
-  removeItem: (id: number) => void
-  updateQuantity: (id: number, quantity: number) => void
+interface CartContextType {
+  cartItems: CartItem[]
+  addToCart: (product: Product, quantity?: number) => void
+  removeFromCart: (productId: number) => void
+  updateQuantity: (productId: number, quantity: number) => void
   clearCart: () => void
-  isOpen: boolean
-  setIsOpen: (isOpen: boolean) => void
-  totalItems: number
-  subtotal: string
-  isSyncing: boolean
+  getItemCount: () => number
+  getSubtotal: () => number
+  isLoading: boolean
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined)
 
-export function CartProvider({ children }: { children: ReactNode }) {
-  const [items, setItems] = useState<CartItem[]>([])
-  const [isOpen, setIsOpen] = useState(false)
-  const [mounted, setMounted] = useState(false)
-  const [isSyncing, setIsSyncing] = useState(false)
-  const { user } = useAuth()
+const LOCAL_STORAGE_CART_KEY = "wheatgrassFreshCart"
+
+export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [cartItems, setCartItems] = useState<CartItem[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const { user, sessionLoading } = useAuth()
   const supabase = getSupabase()
+  const { toast } = useToast()
 
-  // Calculate total items in cart
-  const totalItems = items.reduce((total, item) => total + item.quantity, 0)
-
-  // Calculate subtotal
-  const subtotal = items
-    .reduce((total, item) => {
-      const price = Number.parseFloat(item.price.replace("$", ""))
-      return total + price * item.quantity
-    }, 0)
-    .toFixed(2)
-
-  // Load cart from localStorage or Supabase on mount
-  useEffect(() => {
-    const loadCart = async () => {
-      setMounted(true)
-
-      if (user) {
-        // If user is logged in, load cart from Supabase
-        setIsSyncing(true)
-        try {
-          const { data, error } = await supabase.from("cart_items").select("*, products(*)").eq("user_id", user.id)
-
-          if (error) {
-            console.error("Error loading cart from Supabase:", error)
-          } else if (data && data.length > 0) {
-            // Convert Supabase data to CartItem format
-            const cartItems: CartItem[] = data.map((item) => ({
-              id: item.product_id,
-              name: item.products.name,
-              price: `$${item.products.price.toFixed(2)}`,
-              image: item.products.image_url,
-              quantity: item.quantity,
-            }))
-            setItems(cartItems)
-          } else {
-            // If no items in Supabase but items in localStorage, sync localStorage to Supabase
-            const storedCart = localStorage.getItem("cart")
-            if (storedCart) {
-              try {
-                const localItems = JSON.parse(storedCart)
-                setItems(localItems)
-
-                // Sync to Supabase
-                for (const item of localItems) {
-                  await supabase.from("cart_items").upsert({
-                    user_id: user.id,
-                    product_id: item.id,
-                    quantity: item.quantity,
-                  })
-                }
-              } catch (error) {
-                console.error("Failed to parse cart from localStorage:", error)
-              }
-            }
-          }
-        } catch (error) {
-          console.error("Error in loadCart:", error)
-        } finally {
-          setIsSyncing(false)
-        }
-      } else {
-        // If no user, load from localStorage
-        const storedCart = localStorage.getItem("cart")
-        if (storedCart) {
-          try {
-            setItems(JSON.parse(storedCart))
-          } catch (error) {
-            console.error("Failed to parse cart from localStorage:", error)
-          }
-        }
-      }
-    }
-
-    loadCart()
-  }, [user])
-
-  // Save cart to localStorage when it changes
-  useEffect(() => {
-    if (mounted) {
-      localStorage.setItem("cart", JSON.stringify(items))
-    }
-  }, [items, mounted])
-
-  // Sync cart to Supabase when it changes and user is logged in
-  useEffect(() => {
-    const syncCartToSupabase = async () => {
-      if (!user || !mounted || isSyncing) return
-
-      setIsSyncing(true)
-
+  const fetchUserCart = useCallback(
+    async (userId: string) => {
+      setIsLoading(true)
       try {
-        // First, delete all existing items
-        await supabase.from("cart_items").delete().eq("user_id", user.id)
+        const { data, error } = await supabase
+          .from("cart_items")
+          .select(
+            `
+          quantity,
+          products (*)
+        `,
+          )
+          .eq("user_id", userId)
 
-        // Then insert all current items
-        if (items.length > 0) {
-          const cartData = items.map((item) => ({
-            user_id: user.id,
-            product_id: item.id,
-            quantity: item.quantity,
-          }))
+        if (error) throw error
 
-          await supabase.from("cart_items").insert(cartData)
+        if (data) {
+          const fetchedCartItems: CartItem[] = data
+            .map((item) => {
+              if (item.products) {
+                // Ensure products is not null
+                return {
+                  ...(item.products as Product), // Cast products to Product
+                  quantity: item.quantity,
+                }
+              }
+              return null // Or handle missing product data appropriately
+            })
+            .filter((item): item is CartItem => item !== null) // Filter out nulls
+          setCartItems(fetchedCartItems)
         }
-      } catch (error) {
-        console.error("Error syncing cart to Supabase:", error)
+      } catch (error: any) {
+        console.error("Error fetching cart from DB:", error)
+        toast({ title: "Error", description: "Could not load your cart from the cloud.", variant: "destructive" })
+        // Fallback to local storage if DB fetch fails for logged-in user
+        const localCart = getCartFromLocalStorage()
+        setCartItems(localCart)
       } finally {
-        setIsSyncing(false)
+        setIsLoading(false)
+      }
+    },
+    [supabase, toast],
+  )
+
+  const getCartFromLocalStorage = (): CartItem[] => {
+    if (typeof window !== "undefined") {
+      const localData = localStorage.getItem(LOCAL_STORAGE_CART_KEY)
+      return localData ? JSON.parse(localData) : []
+    }
+    return []
+  }
+
+  const saveCartToLocalStorage = (items: CartItem[]) => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem(LOCAL_STORAGE_CART_KEY, JSON.stringify(items))
+    }
+  }
+
+  // Effect to load cart on mount and when user changes
+  useEffect(() => {
+    if (!sessionLoading) {
+      // Only run after session loading is complete
+      if (user) {
+        fetchUserCart(user.id)
+      } else {
+        const localCart = getCartFromLocalStorage()
+        setCartItems(localCart)
+        setIsLoading(false)
       }
     }
+  }, [user, sessionLoading, fetchUserCart])
 
-    syncCartToSupabase()
-  }, [items, user, mounted, isSyncing])
+  // Effect to save to local storage whenever cartItems change (for anonymous users or as backup)
+  useEffect(() => {
+    if (!user) {
+      // Only save to LS if user is not logged in
+      saveCartToLocalStorage(cartItems)
+    }
+  }, [cartItems, user])
 
-  // Add item to cart
-  const addItem = (newItem: Omit<CartItem, "quantity">) => {
-    setItems((prevItems) => {
-      const existingItem = prevItems.find((item) => item.id === newItem.id)
-
+  const addToCart = async (product: Product, quantity = 1) => {
+    setCartItems((prevItems) => {
+      const existingItem = prevItems.find((item) => item.id === product.id)
+      let newItems
       if (existingItem) {
-        return prevItems.map((item) => (item.id === newItem.id ? { ...item, quantity: item.quantity + 1 } : item))
+        newItems = prevItems.map((item) =>
+          item.id === product.id ? { ...item, quantity: item.quantity + quantity } : item,
+        )
+      } else {
+        newItems = [...prevItems, { ...product, quantity }]
       }
-
-      return [...prevItems, { ...newItem, quantity: 1 }]
+      if (!user) saveCartToLocalStorage(newItems) // Save to LS for anon users
+      return newItems
     })
 
-    // Open cart drawer when adding items
-    setIsOpen(true)
+    toast({
+      title: "Added to Cart",
+      description: `${product.name} has been added to your cart.`,
+    })
+
+    if (user) {
+      try {
+        // Upsert logic for database
+        const { error } = await supabase.from("cart_items").upsert(
+          {
+            user_id: user.id,
+            product_id: product.id,
+            quantity: cartItems.find((item) => item.id === product.id)
+              ? cartItems.find((item) => item.id === product.id)!.quantity + quantity
+              : quantity,
+          },
+          { onConflict: "user_id,product_id" },
+        )
+        if (error) throw error
+      } catch (error: any) {
+        console.error("Error saving item to DB cart:", error)
+        toast({ title: "Sync Error", description: "Could not save item to cloud cart.", variant: "destructive" })
+        // Optionally revert local change or mark item as unsynced
+      }
+    }
   }
 
-  // Remove item from cart
-  const removeItem = (id: number) => {
-    setItems((prevItems) => prevItems.filter((item) => item.id !== id))
+  const removeFromCart = async (productId: number) => {
+    setCartItems((prevItems) => {
+      const newItems = prevItems.filter((item) => item.id !== productId)
+      if (!user) saveCartToLocalStorage(newItems)
+      return newItems
+    })
+    toast({
+      title: "Removed from Cart",
+      description: `Item has been removed from your cart.`,
+    })
+    if (user) {
+      try {
+        const { error } = await supabase.from("cart_items").delete().match({ user_id: user.id, product_id: productId })
+        if (error) throw error
+      } catch (error: any) {
+        console.error("Error deleting item from DB cart:", error)
+        toast({ title: "Sync Error", description: "Could not remove item from cloud cart.", variant: "destructive" })
+      }
+    }
   }
 
-  // Update item quantity
-  const updateQuantity = (id: number, quantity: number) => {
-    if (quantity < 1) {
-      removeItem(id)
+  const updateQuantity = async (productId: number, quantity: number) => {
+    if (quantity <= 0) {
+      removeFromCart(productId)
       return
     }
+    setCartItems((prevItems) => {
+      const newItems = prevItems.map((item) => (item.id === productId ? { ...item, quantity } : item))
+      if (!user) saveCartToLocalStorage(newItems)
+      return newItems
+    })
 
-    setItems((prevItems) => prevItems.map((item) => (item.id === id ? { ...item, quantity } : item)))
+    if (user) {
+      try {
+        const { error } = await supabase
+          .from("cart_items")
+          .update({ quantity })
+          .match({ user_id: user.id, product_id: productId })
+        if (error) throw error
+      } catch (error: any) {
+        console.error("Error updating quantity in DB cart:", error)
+        toast({
+          title: "Sync Error",
+          description: "Could not update item quantity in cloud cart.",
+          variant: "destructive",
+        })
+      }
+    }
   }
 
-  // Clear cart
-  const clearCart = () => {
-    setItems([])
+  const clearCart = async () => {
+    setCartItems([])
+    if (!user) saveCartToLocalStorage([])
+    toast({
+      title: "Cart Cleared",
+      description: "Your cart has been emptied.",
+    })
+    if (user) {
+      try {
+        const { error } = await supabase.from("cart_items").delete().match({ user_id: user.id })
+        if (error) throw error
+      } catch (error: any) {
+        console.error("Error clearing DB cart:", error)
+        toast({ title: "Sync Error", description: "Could not clear cloud cart.", variant: "destructive" })
+      }
+    }
   }
+
+  const getItemCount = () => {
+    return cartItems.reduce((count, item) => count + item.quantity, 0)
+  }
+
+  const getSubtotal = () => {
+    return cartItems.reduce((total, item) => total + item.price * item.quantity, 0)
+  }
+
+  // Function to merge local cart with DB cart on login
+  const mergeLocalCartWithDb = useCallback(
+    async (userId: string, localCartItems: CartItem[]) => {
+      if (localCartItems.length === 0) return
+      setIsLoading(true)
+      try {
+        const { data: dbCartData, error: fetchError } = await supabase
+          .from("cart_items")
+          .select("product_id, quantity")
+          .eq("user_id", userId)
+
+        if (fetchError) throw fetchError
+
+        const dbCartMap = new Map(dbCartData.map((item) => [item.product_id, item.quantity]))
+        const itemsToUpsert = []
+
+        for (const localItem of localCartItems) {
+          const dbQuantity = dbCartMap.get(localItem.id)
+          const newQuantity = dbQuantity ? dbQuantity + localItem.quantity : localItem.quantity
+          itemsToUpsert.push({
+            user_id: userId,
+            product_id: localItem.id,
+            quantity: newQuantity,
+          })
+        }
+
+        if (itemsToUpsert.length > 0) {
+          const { error: upsertError } = await supabase.from("cart_items").upsert(itemsToUpsert, {
+            onConflict: "user_id,product_id",
+          })
+          if (upsertError) throw upsertError
+        }
+        // After successful merge, clear local storage and refetch cart
+        if (typeof window !== "undefined") localStorage.removeItem(LOCAL_STORAGE_CART_KEY)
+        fetchUserCart(userId) // This will set isLoading to false
+      } catch (error) {
+        console.error("Error merging cart:", error)
+        toast({
+          title: "Cart Merge Error",
+          description: "Could not merge local cart with cloud.",
+          variant: "destructive",
+        })
+        setIsLoading(false) // Ensure loading is false on error
+      }
+    },
+    [supabase, fetchUserCart, toast],
+  )
+
+  useEffect(() => {
+    if (!sessionLoading && user) {
+      const localCart = getCartFromLocalStorage()
+      if (localCart.length > 0) {
+        mergeLocalCartWithDb(user.id, localCart)
+      } else {
+        fetchUserCart(user.id)
+      }
+    } else if (!sessionLoading && !user) {
+      const localCart = getCartFromLocalStorage()
+      setCartItems(localCart)
+      setIsLoading(false)
+    }
+  }, [user, sessionLoading, fetchUserCart, mergeLocalCartWithDb])
 
   return (
     <CartContext.Provider
-      value={{
-        items,
-        addItem,
-        removeItem,
-        updateQuantity,
-        clearCart,
-        isOpen,
-        setIsOpen,
-        totalItems,
-        subtotal,
-        isSyncing,
-      }}
+      value={{ cartItems, addToCart, removeFromCart, updateQuantity, clearCart, getItemCount, getSubtotal, isLoading }}
     >
       {children}
     </CartContext.Provider>
   )
 }
 
-export function useCart() {
+export const useCart = () => {
   const context = useContext(CartContext)
   if (context === undefined) {
     throw new Error("useCart must be used within a CartProvider")

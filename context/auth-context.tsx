@@ -91,13 +91,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Update the useEffect to fetch role when user changes
   useEffect(() => {
     if (user) {
-      fetchUserRole(user.id).then((role) => {
-        setUserRole(role)
-      })
+      const getUserProfile = async () => {
+        const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
+        if (profile) {
+          setUserRole(profile.role)
+        }
+      }
+      getUserProfile()
     } else {
       setUserRole(null)
     }
-  }, [user])
+  }, [user, supabase])
 
   const signIn = async (email: string, password: string) => {
     try {

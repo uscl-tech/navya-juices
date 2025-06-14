@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { z } from "zod"
 import { useForm } from "react-hook-form"
@@ -12,7 +11,6 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useAuth } from "@/context/auth-context"
-import { getSupabase } from "@/lib/supabase"
 
 const loginSchema = z.object({
   email: z.string().email({ message: "Please enter a valid email address" }),
@@ -24,8 +22,7 @@ type LoginFormValues = z.infer<typeof loginSchema>
 export function LoginForm() {
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
-  const { signIn, user } = useAuth()
-  const router = useRouter()
+  const { signIn } = useAuth()
   const [redirectPath, setRedirectPath] = useState<string | null>(null)
 
   // Get redirect path from URL on component mount
@@ -46,35 +43,12 @@ export function LoginForm() {
   const onSubmit = async (data: LoginFormValues) => {
     setIsLoading(true)
     setError(null)
-
     try {
       const { error } = await signIn(data.email, data.password)
-
       if (error) {
         setError(error.message)
-        return
       }
-
-      // Check if user is admin after successful login
-      const supabase = getSupabase()
-      const { data: profile } = await supabase.from("profiles").select("role").eq("id", user?.id).single()
-
-      // Redirect based on role and redirect param
-      if (profile?.role === "admin") {
-        // If admin, redirect to admin dashboard or specified admin page
-        if (redirectPath && redirectPath.startsWith("/admin")) {
-          router.push(redirectPath)
-        } else {
-          router.push("/admin")
-        }
-      } else {
-        // For regular users, redirect to account or specified non-admin page
-        if (redirectPath && !redirectPath.startsWith("/admin")) {
-          router.push(redirectPath)
-        } else {
-          router.push("/account")
-        }
-      }
+      // On success, we do nothing here. The page will handle the redirect.
     } catch (err) {
       console.error("Login error:", err)
       setError("An unexpected error occurred. Please try again.")

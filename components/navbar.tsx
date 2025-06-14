@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { useTheme } from "next-themes"
 import { useMobile } from "@/hooks/use-mobile"
 import { useCart } from "@/context/cart-context"
+import { useAuth } from "@/context/auth-context"
 
 const navItems = [
   { name: "Home", href: "/" },
@@ -25,6 +26,20 @@ export function Navbar() {
   const { theme, setTheme } = useTheme()
   const isMobile = useMobile()
   const { totalItems, setIsOpen: setCartOpen } = useCart()
+  const { user, userRole, signOut } = useAuth()
+
+  const baseNavItems = [
+    { name: "Home", href: "/" },
+    { name: "Products", href: "/products" },
+    { name: "Benefits", href: "/benefits" },
+    { name: "About", href: "/about" },
+    { name: "Contact", href: "/contact" },
+  ]
+
+  const dynamicNavItems = [...baseNavItems]
+  if (userRole === "admin") {
+    dynamicNavItems.push({ name: "Admin", href: "/admin" })
+  }
 
   useEffect(() => {
     const handleScroll = () => {
@@ -58,7 +73,7 @@ export function Navbar() {
           </div>
 
           <nav className="hidden md:flex items-center space-x-8">
-            {navItems.map((item) => (
+            {dynamicNavItems.map((item) => (
               <Link
                 key={item.name}
                 href={item.href}
@@ -89,6 +104,32 @@ export function Navbar() {
               <span className="sr-only">Shopping cart</span>
             </Button>
 
+            {user ? (
+              <>
+                <Link href="/account" passHref>
+                  <Button variant="ghost" className="hidden md:inline-flex">
+                    My Account
+                  </Button>
+                </Link>
+                <Button variant="ghost" onClick={signOut} className="hidden md:inline-flex">
+                  Logout
+                </Button>
+              </>
+            ) : (
+              <>
+                <Link href="/login" passHref>
+                  <Button variant="outline" className="hidden md:inline-flex">
+                    Login
+                  </Button>
+                </Link>
+                <Link href="/signup" passHref>
+                  <Button variant="default" className="hidden md:inline-flex">
+                    Sign Up
+                  </Button>
+                </Link>
+              </>
+            )}
+
             <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setIsOpen(!isOpen)}>
               <Menu className="h-6 w-6" />
               <span className="sr-only">Open menu</span>
@@ -117,7 +158,7 @@ export function Navbar() {
                 </Button>
               </div>
               <nav className="mt-8 grid gap-6 text-lg">
-                {navItems.map((item) => (
+                {dynamicNavItems.map((item) => (
                   <Link
                     key={item.name}
                     href={item.href}
@@ -129,6 +170,49 @@ export function Navbar() {
                     {item.name}
                   </Link>
                 ))}
+                {user ? (
+                  <>
+                    <Link
+                      href="/account"
+                      className={`flex items-center py-3 ${
+                        pathname === "/account" ? "text-primary font-medium" : "text-foreground/80"
+                      }`}
+                      onClick={() => setIsOpen(false)}
+                    >
+                      My Account
+                    </Link>
+                    <button
+                      onClick={() => {
+                        signOut()
+                        setIsOpen(false)
+                      }}
+                      className="flex items-center py-3 text-foreground/80 text-left"
+                    >
+                      Logout
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <Link
+                      href="/login"
+                      className={`flex items-center py-3 ${
+                        pathname === "/login" ? "text-primary font-medium" : "text-foreground/80"
+                      }`}
+                      onClick={() => setIsOpen(false)}
+                    >
+                      Login
+                    </Link>
+                    <Link
+                      href="/signup"
+                      className={`flex items-center py-3 ${
+                        pathname === "/signup" ? "text-primary font-medium" : "text-foreground/80"
+                      }`}
+                      onClick={() => setIsOpen(false)}
+                    >
+                      Sign Up
+                    </Link>
+                  </>
+                )}
               </nav>
             </div>
           </motion.div>
