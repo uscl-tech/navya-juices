@@ -1,56 +1,87 @@
-import { createClient } from "@supabase/supabase-js"
+import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/supabase"
 
-// Ensure these are being correctly picked up from your environment
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-let supabaseInstance: ReturnType<typeof createClient<Database>> | null = null
+let supabaseInstance: SupabaseClient<Database> | null = null
+let initializationError: Error | null = null
+let hasLoggedInitialization = false // Prevent spamming logs
 
-export const getSupabase = () => {
+export const getSupabase = (): SupabaseClient<Database> | null => {
+  if (initializationError) {
+    if (!hasLoggedInitialization) {
+      console.error(
+        "[SupabaseClient] Returning null due to previous initialization error:",
+        initializationError.message,
+      )
+      hasLoggedInitialization = true
+    }
+    return null
+  }
+
   if (!supabaseInstance) {
-    // Check explicitly for undefined or empty strings
     if (!supabaseUrl || supabaseUrl.trim() === "") {
-      console.error("CRITICAL: NEXT_PUBLIC_SUPABASE_URL is not defined or empty. Please check environment variables.")
-      throw new Error("Supabase URL is missing. App cannot function.")
+      initializationError = new Error("CRITICAL: NEXT_PUBLIC_SUPABASE_URL is not defined or empty.")
+      console.error(initializationError.message)
+      hasLoggedInitialization = true
+      return null
     }
     if (!supabaseAnonKey || supabaseAnonKey.trim() === "") {
-      console.error(
-        "CRITICAL: NEXT_PUBLIC_SUPABASE_ANON_KEY is not defined or empty. Please check environment variables.",
-      )
-      throw new Error("Supabase Anon Key is missing. App cannot function.")
+      initializationError = new Error("CRITICAL: NEXT_PUBLIC_SUPABASE_ANON_KEY is not defined or empty.")
+      console.error(initializationError.message)
+      hasLoggedInitialization = true
+      return null
     }
 
     try {
-      console.log(`Initializing Supabase client with URL: ${supabaseUrl.substring(0, 20)}...`) // Log part of URL for verification
+      if (!hasLoggedInitialization) {
+        console.log(`[SupabaseClient] Initializing with URL: ${supabaseUrl.substring(0, 30)}...`)
+      }
       supabaseInstance = createClient<Database>(supabaseUrl, supabaseAnonKey)
-      console.log("Supabase client initialized successfully.")
-    } catch (error) {
-      console.error("Failed to initialize Supabase client:", error)
-      // This error would typically prevent further Supabase calls
-      throw error
+      if (!hasLoggedInitialization) {
+        console.log("[SupabaseClient] Initialized successfully.")
+      }
+      initializationError = null // Clear error on success
+      hasLoggedInitialization = true // Logged success or first attempt
+    } catch (error: any) {
+      initializationError = new Error(`[SupabaseClient] Failed to initialize: ${error.message}`)
+      console.error(initializationError.message, error)
+      hasLoggedInitialization = true
+      supabaseInstance = null // Ensure instance is null on error
     }
   }
   return supabaseInstance
 }
 
-// For server components and server actions
+// For server components and server actions - this remains largely the same
+// but ensure it also throws or logs clearly if env vars are missing.
 export const createServerSupabase = () => {
   const serverSupabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
   if (!serverSupabaseUrl || serverSupabaseUrl.trim() === "") {
-    console.error("CRITICAL: Server Supabase URL is not defined or empty.")
-    throw new Error("Server Supabase URL is missing.")
+    const errorMsg =
+      "CRITICAL: Server Supabase URL (SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL) is not defined or empty for server client."
+    console.error(errorMsg)
+    throw new Error(errorMsg)
   }
   if (!serviceRoleKey || serviceRoleKey.trim() === "") {
-    console.error("CRITICAL: SUPABASE_SERVICE_ROLE_KEY is not defined or empty.")
-    throw new Error("Supabase Service Role Key is missing.")
+    const errorMsg = "CRITICAL: SUPABASE_SERVICE_ROLE_KEY is not defined or empty for server client."
+    console.error(errorMsg)
+    throw new Error(errorMsg)
   }
 
   return createClient<Database>(serverSupabaseUrl, serviceRoleKey, {
     auth: {
+      // Generally, for server-side clients used in Route Handlers or Server Actions,
+      // you might not want to persist session cookies this way,
+      // as the Supabase SSR helpers (createServerClient) handle cookie management.
+      // If this is for a generic server-side utility not in the request-response cycle,
+      // `persistSession: false` is appropriate.
       persistSession: false,
+      // autoRefreshToken: false, // Consider if not managing sessions here
+      // detectSessionInUrl: false, // Consider if not managing sessions here
     },
   })
 }

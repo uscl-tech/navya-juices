@@ -25,7 +25,7 @@ export function Navbar() {
   const pathname = usePathname()
   const { theme, setTheme } = useTheme()
   const isMobile = useMobile()
-  const { getItemCount, setIsOpen: setCartOpen } = useCart()
+  const { getItemCount, toggleCart, closeCart } = useCart()
   const currentItemCount = getItemCount()
   const { user, userRole, signOut } = useAuth()
 
@@ -68,7 +68,7 @@ export function Navbar() {
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between">
           <div className="flex items-center">
-            <Link href="/" className="flex items-center space-x-2" onClick={() => setCartOpen(false)}>
+            <Link href="/" className="flex items-center space-x-2" onClick={closeCart}>
               <span className="text-2xl font-bold text-primary">Navya's</span>
             </Link>
           </div>
@@ -93,18 +93,16 @@ export function Navbar() {
               <span className="sr-only">Toggle theme</span>
             </Button>
 
-            <Link href="/cart" passHref>
-              <Button variant="ghost" size="icon" aria-label="Shopping cart">
-                <div className="relative">
-                  <ShoppingCart className="h-5 w-5" />
-                  {currentItemCount > 0 && (
-                    <span className="absolute -top-2 -right-2 bg-primary text-primary-foreground text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
-                      {currentItemCount}
-                    </span>
-                  )}
-                </div>
-              </Button>
-            </Link>
+            <Button variant="ghost" size="icon" aria-label="Shopping cart" onClick={toggleCart}>
+              <div className="relative">
+                <ShoppingCart className="h-5 w-5" />
+                {currentItemCount > 0 && (
+                  <span className="absolute -top-2 -right-2 bg-primary text-primary-foreground text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+                    {currentItemCount}
+                  </span>
+                )}
+              </div>
+            </Button>
 
             {user ? (
               <>

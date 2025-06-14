@@ -67,11 +67,13 @@ const CartItem = ({ id, name, price, image, quantity }: CartItemProps) => {
 }
 
 export const Cart = () => {
-  const { items, isOpen, setIsOpen, totalItems, subtotal } = useCart()
+  const { cartItems: items, isCartOpen, closeCart, getItemCount, getSubtotal } = useCart()
+  const totalItems = getItemCount() // Calculate totalItems using getItemCount
+  const subtotal = getSubtotal() // Calculate subtotal using getSubtotal
 
   return (
     <AnimatePresence>
-      {isOpen && (
+      {isCartOpen && (
         <motion.div
           className="fixed top-0 right-0 w-full h-full bg-background z-50 shadow-lg overflow-y-auto"
           initial={{ x: "100%" }}
@@ -83,7 +85,7 @@ export const Cart = () => {
             {/* Header */}
             <div className="flex items-center justify-between p-4 border-b border-gray-200">
               <h2 className="text-2xl font-semibold">Your Cart ({totalItems})</h2>
-              <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)}>
+              <Button variant="ghost" size="icon" onClick={closeCart}>
                 <X className="h-6 w-6" />
               </Button>
             </div>
