@@ -3,10 +3,10 @@
 import type { Product } from "@/types/supabase"
 import type React from "react"
 import { createContext, useContext, useEffect, useState, useCallback } from "react"
-import { useAuth } from "./auth-context"
-import { getSupabase } from "@/lib/supabase" // Corrected path
+import { useAuth } from "./auth-context" // Corrected: useAuth directly
+import { getSupabase } from "@/lib/supabase"
 import { useToast } from "@/components/ui/use-toast"
-import type { SupabaseClient } from "@supabase/supabase-js" // Import type
+import type { SupabaseClient } from "@supabase/supabase-js"
 
 export interface CartItem extends Product {
   quantity: number
@@ -20,12 +20,12 @@ interface CartContextType {
   clearCart: () => void
   getItemCount: () => number
   getSubtotal: () => number
-  isLoading: boolean
+  isLoading: boolean // Cart-specific loading
   isCartOpen: boolean
   openCart: () => void
   closeCart: () => void
   toggleCart: () => void
-  isSupabaseConnected: boolean // To indicate if Supabase client is available
+  isCartSupabaseConnected: boolean
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined)
@@ -33,113 +33,116 @@ const LOCAL_STORAGE_CART_KEY = "wheatgrassFreshCart"
 
 export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [cartItems, setCartItems] = useState<CartItem[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const { user, sessionLoading } = useAuth()
+  const [isCartLoading, setIsCartLoading] = useState(true) // Cart's own loading state
+  const { user, isLoading: isAuthLoading, isSupabaseInitialized: isAuthSupabaseInitialized } = useAuth() // Get auth loading state
   const { toast } = useToast()
   const [isCartOpen, setIsCartOpen] = useState(false)
-  const [supabase, setSupabase] = useState<SupabaseClient<any, "public", any> | null>(null)
-  const [isSupabaseConnected, setIsSupabaseConnected] = useState(false)
-  const [initializationAttempted, setInitializationAttempted] = useState(false)
+  const [cartSupabase, setCartSupabase] = useState<SupabaseClient | null>(null)
+  const [isCartSupabaseConnected, setIsCartSupabaseConnected] = useState(false)
 
   useEffect(() => {
-    if (!initializationAttempted) {
+    // Initialize Supabase client for cart, if Auth says it's generally initialized
+    if (isAuthSupabaseInitialized) {
       const client = getSupabase()
-      setSupabase(client)
-      setIsSupabaseConnected(!!client)
-      setInitializationAttempted(true) // Mark that we've tried to initialize
-
+      setCartSupabase(client)
+      setIsCartSupabaseConnected(!!client)
       if (!client) {
-        console.warn("[CartContext] Supabase client failed to initialize. Cart will operate in offline mode.")
-        // No toast here, getSupabase logs critical errors.
-        // A general "offline" banner could be shown elsewhere if needed.
+        console.warn(
+          "[CartContext] Supabase client not available for cart operations despite Auth init. Cart will be offline.",
+        )
       }
+    } else {
+      // If Auth context hasn't initialized Supabase, cart can't use it either.
+      setIsCartSupabaseConnected(false)
     }
-  }, [initializationAttempted])
+  }, [isAuthSupabaseInitialized])
 
   const openCart = useCallback(() => setIsCartOpen(true), [])
   const closeCart = useCallback(() => setIsCartOpen(false), [])
   const toggleCart = useCallback(() => setIsCartOpen((prev) => !prev), [])
 
-  const getCartFromLocalStorage = (): CartItem[] => {
+  const getCartFromLocalStorage = useCallback((): CartItem[] => {
     if (typeof window !== "undefined") {
       const localData = localStorage.getItem(LOCAL_STORAGE_CART_KEY)
       try {
         return localData ? JSON.parse(localData) : []
       } catch (e) {
-        console.error("Error parsing cart from local storage:", e)
-        localStorage.removeItem(LOCAL_STORAGE_CART_KEY) // Clear corrupted data
+        console.error("[CartContext] Error parsing cart from local storage:", e)
+        localStorage.removeItem(LOCAL_STORAGE_CART_KEY)
         return []
       }
     }
     return []
-  }
+  }, [])
 
-  const saveCartToLocalStorage = (items: CartItem[]) => {
+  const saveCartToLocalStorage = useCallback((items: CartItem[]) => {
     if (typeof window !== "undefined") {
       localStorage.setItem(LOCAL_STORAGE_CART_KEY, JSON.stringify(items))
     }
-  }
+  }, [])
 
   const fetchUserCart = useCallback(
     async (userId: string) => {
-      if (!supabase) {
+      if (!cartSupabase || !isCartSupabaseConnected) {
         console.warn("[CartContext] fetchUserCart: Supabase client not available. Using local cart.")
         setCartItems(getCartFromLocalStorage())
-        setIsLoading(false)
+        setIsCartLoading(false)
         return
       }
-      setIsLoading(true)
+      setIsCartLoading(true)
+      console.log(`[CartContext] fetchUserCart: Fetching for user ${userId}`)
       try {
-        const { data, error, status } = await supabase
+        const { data, error, status } = await cartSupabase
           .from("cart_items")
           .select("quantity, products (*)")
           .eq("user_id", userId)
 
-        if (error) {
-          console.error(
-            `[CartContext] Supabase error fetching cart. Status: ${status}, Message: ${error.message}`,
-            error,
-          )
-          throw error
-        }
+        if (error) throw error // Let catch block handle specific error logging
+
         if (data) {
           const fetchedCartItems: CartItem[] = data
             .map((item) => (item.products ? { ...(item.products as Product), quantity: item.quantity } : null))
             .filter((item): item is CartItem => item !== null)
           setCartItems(fetchedCartItems)
+          console.log("[CartContext] fetchUserCart: Successfully fetched and set cart items.")
         }
       } catch (error: any) {
-        console.error("[CartContext] Error during fetchUserCart:", error)
+        console.error("[CartContext] Error during fetchUserCart:", error.message, error)
         const isNetworkError = error.message?.toLowerCase().includes("failed to fetch")
         toast({
-          title: "Cart Error",
+          title: "Cart Loading Error",
           description: isNetworkError
-            ? "Failed to connect to server to load your cart. Using local data if available."
+            ? "Network issue: Could not load your cart from the server. Using local data if available."
             : `Could not load cart. (Details: ${error.message || "Unknown error"})`,
           variant: "destructive",
         })
-        setCartItems(getCartFromLocalStorage()) // Fallback
+        setCartItems(getCartFromLocalStorage())
       } finally {
-        setIsLoading(false)
+        setIsCartLoading(false)
       }
     },
-    [supabase, toast],
+    [cartSupabase, isCartSupabaseConnected, toast, getCartFromLocalStorage],
   )
 
   const mergeLocalCartWithDb = useCallback(
     async (userId: string, localCartItems: CartItem[]) => {
-      if (!supabase || localCartItems.length === 0) {
-        if (!supabase) console.warn("[CartContext] mergeLocalCart: Supabase client not available. Merge aborted.")
-        if (localCartItems.length > 0)
-          fetchUserCart(userId) // Try to fetch DB cart if local was empty
-        else setIsLoading(false)
+      if (!cartSupabase || !isCartSupabaseConnected || localCartItems.length === 0) {
+        if (localCartItems.length > 0) {
+          // If there's local cart but no DB, keep local
+          setCartItems(localCartItems)
+        } else if (userId && cartSupabase && isCartSupabaseConnected) {
+          // No local cart, try fetching DB
+          await fetchUserCart(userId) // This will set loading states
+          return // fetchUserCart handles its own loading
+        }
+        setIsCartLoading(false) // No merge, no fetch, stop loading
         return
       }
 
-      console.log("[CartContext] Attempting to merge local cart with DB...")
-      setIsLoading(true)
+      console.log("[CartContext] mergeLocalCartWithDb: Attempting merge...")
+      setIsCartLoading(true)
       try {
-        const { data: dbCartData, error: fetchError } = await supabase
+        const { data: dbCartData, error: fetchError } = await cartSupabase
           .from("cart_items")
           .select("product_id, quantity")
           .eq("user_id", userId)
@@ -147,68 +150,77 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (fetchError) throw fetchError
 
         const dbCartMap = new Map(dbCartData.map((item) => [item.product_id, item.quantity]))
-        const itemsToUpsert = localCartItems.map((localItem) => {
-          const dbQuantity = dbCartMap.get(localItem.id) || 0
-          return {
-            user_id: userId,
-            product_id: Number(localItem.id),
-            quantity: dbQuantity + localItem.quantity, // Sum quantities
-          }
-        })
+        const itemsToUpsert = localCartItems.map((localItem) => ({
+          user_id: userId,
+          product_id: Number(localItem.id),
+          quantity: (dbCartMap.get(localItem.id) || 0) + localItem.quantity,
+        }))
 
         if (itemsToUpsert.length > 0) {
-          const { error: upsertError } = await supabase
+          const { error: upsertError } = await cartSupabase
             .from("cart_items")
             .upsert(itemsToUpsert, { onConflict: "user_id,product_id" })
           if (upsertError) throw upsertError
         }
 
         if (typeof window !== "undefined") localStorage.removeItem(LOCAL_STORAGE_CART_KEY)
-        console.log("[CartContext] Merge successful. Refetching cart.")
-        await fetchUserCart(userId) // Refetch the merged cart
+        console.log("[CartContext] mergeLocalCartWithDb: Merge successful. Refetching cart.")
+        await fetchUserCart(userId) // Refetch the final merged cart
       } catch (error: any) {
-        console.error("[CartContext] Error merging cart:", error)
+        console.error("[CartContext] Error merging cart:", error.message, error)
         toast({
           title: "Cart Sync Error",
-          description: "Could not sync local cart with server. Local items remain saved.",
+          description: "Could not sync local cart with server. Local items remain available.",
           variant: "destructive",
         })
-        // Don't clear local cart on merge error; keep local items.
-        // Potentially set cartItems to a merged view of local + what might have been fetched before error
-        setCartItems(localCartItems) // Or a more sophisticated merge if dbCartData was fetched
-        setIsLoading(false)
+        setCartItems(localCartItems) // Fallback to local cart on merge error
+        setIsCartLoading(false)
       }
     },
-    [supabase, fetchUserCart, toast],
+    [cartSupabase, isCartSupabaseConnected, fetchUserCart, toast],
   )
 
+  // Effect for loading initial cart data (depends on Auth state)
   useEffect(() => {
-    if (!initializationAttempted || sessionLoading) return // Wait for Supabase init and auth state
+    console.log(
+      `[CartContext] Main effect: AuthLoading: ${isAuthLoading}, User: ${user?.id}, CartSupabaseConnected: ${isCartSupabaseConnected}`,
+    )
+    if (isAuthLoading) {
+      console.log("[CartContext] Main effect: Auth is loading, cart operations paused.")
+      setIsCartLoading(true) // If auth is loading, cart should also be in a loading state
+      return
+    }
 
-    if (user && supabase) {
+    // Auth has finished loading
+    if (user && isCartSupabaseConnected) {
+      console.log(`[CartContext] Main effect: User ${user.id} logged in and Supabase connected for cart.`)
       const localCart = getCartFromLocalStorage()
       if (localCart.length > 0) {
+        console.log("[CartContext] Main effect: Local cart found, attempting merge.")
         mergeLocalCartWithDb(user.id, localCart)
       } else {
+        console.log("[CartContext] Main effect: No local cart, fetching user cart from DB.")
         fetchUserCart(user.id)
       }
-    } else {
-      // Not logged in or Supabase not available
-      if (user && !supabase) {
-        console.warn("[CartContext] User logged in, but Supabase client unavailable. Loading cart from local storage.")
-      }
+    } else if (!user) {
+      console.log("[CartContext] Main effect: No user logged in. Loading cart from local storage.")
       setCartItems(getCartFromLocalStorage())
-      setIsLoading(false)
+      setIsCartLoading(false)
+    } else if (user && !isCartSupabaseConnected) {
+      console.warn(
+        "[CartContext] Main effect: User logged in, but Supabase NOT connected for cart. Loading from local storage.",
+      )
+      setCartItems(getCartFromLocalStorage())
+      setIsCartLoading(false)
     }
-  }, [user, sessionLoading, supabase, fetchUserCart, mergeLocalCartWithDb, initializationAttempted])
+  }, [user, isAuthLoading, isCartSupabaseConnected, getCartFromLocalStorage, mergeLocalCartWithDb, fetchUserCart])
 
+  // Effect for saving to local storage (if not logged in or Supabase not connected for cart)
   useEffect(() => {
-    // Save to local storage if not logged in, or if Supabase isn't connected
-    // but only after initial loading is complete to avoid overwriting fetched data
-    if (!isLoading && (!user || !isSupabaseConnected)) {
+    if (!isCartLoading && (!user || !isCartSupabaseConnected)) {
       saveCartToLocalStorage(cartItems)
     }
-  }, [cartItems, user, isSupabaseConnected, isLoading])
+  }, [cartItems, user, isCartSupabaseConnected, isCartLoading, saveCartToLocalStorage])
 
   const addToCart = async (product: Product, quantity = 1) => {
     let newQuantityInCart = quantity
@@ -221,14 +233,14 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         newItems = [...prevItems, { ...product, quantity }]
       }
-      if (!user || !supabase) saveCartToLocalStorage(newItems)
+      // Local save handled by separate useEffect
       return newItems
     })
     toast({ title: "Added to Cart", description: `${product.name} has been added.` })
 
-    if (user && supabase) {
+    if (user && cartSupabase && isCartSupabaseConnected) {
       try {
-        const { error } = await supabase
+        const { error } = await cartSupabase
           .from("cart_items")
           .upsert(
             { user_id: user.id, product_id: Number(product.id), quantity: newQuantityInCart },
@@ -236,29 +248,27 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
           )
         if (error) throw error
       } catch (error: any) {
-        console.error("Error saving item to DB cart:", error)
+        console.error("[CartContext] Error saving item to DB cart:", error.message, error)
         toast({ title: "Sync Error", description: "Could not save item to cloud.", variant: "destructive" })
-        // Potentially revert local state or mark item as unsynced
       }
     }
   }
 
+  // removeFromCart, updateQuantity, clearCart remain similar but should use cartSupabase
+  // and check isCartSupabaseConnected before DB operations.
+
   const removeFromCart = async (productId: number) => {
-    setCartItems((prevItems) => {
-      const newItems = prevItems.filter((item) => item.id !== productId)
-      if (!user || !supabase) saveCartToLocalStorage(newItems)
-      return newItems
-    })
+    setCartItems((prevItems) => prevItems.filter((item) => item.id !== productId))
     toast({ title: "Removed from Cart" })
-    if (user && supabase) {
+    if (user && cartSupabase && isCartSupabaseConnected) {
       try {
-        const { error } = await supabase
+        const { error } = await cartSupabase
           .from("cart_items")
           .delete()
           .match({ user_id: user.id, product_id: Number(productId) })
         if (error) throw error
       } catch (error: any) {
-        console.error("Error deleting item from DB cart:", error)
+        console.error("[CartContext] Error deleting item from DB cart:", error.message, error)
         toast({ title: "Sync Error", description: "Could not remove from cloud.", variant: "destructive" })
       }
     }
@@ -269,20 +279,16 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       removeFromCart(productId)
       return
     }
-    setCartItems((prevItems) => {
-      const newItems = prevItems.map((item) => (item.id === productId ? { ...item, quantity } : item))
-      if (!user || !supabase) saveCartToLocalStorage(newItems)
-      return newItems
-    })
-    if (user && supabase) {
+    setCartItems((prevItems) => prevItems.map((item) => (item.id === productId ? { ...item, quantity } : item)))
+    if (user && cartSupabase && isCartSupabaseConnected) {
       try {
-        const { error } = await supabase
+        const { error } = await cartSupabase
           .from("cart_items")
           .update({ quantity })
           .match({ user_id: user.id, product_id: Number(productId) })
         if (error) throw error
       } catch (error: any) {
-        console.error("Error updating quantity in DB cart:", error)
+        console.error("[CartContext] Error updating quantity in DB cart:", error.message, error)
         toast({ title: "Sync Error", description: "Could not update in cloud.", variant: "destructive" })
       }
     }
@@ -290,14 +296,13 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const clearCart = async () => {
     setCartItems([])
-    if (!user || !supabase) saveCartToLocalStorage([])
     toast({ title: "Cart Cleared" })
-    if (user && supabase) {
+    if (user && cartSupabase && isCartSupabaseConnected) {
       try {
-        const { error } = await supabase.from("cart_items").delete().match({ user_id: user.id })
+        const { error } = await cartSupabase.from("cart_items").delete().match({ user_id: user.id })
         if (error) throw error
       } catch (error: any) {
-        console.error("Error clearing DB cart:", error)
+        console.error("[CartContext] Error clearing DB cart:", error.message, error)
         toast({ title: "Sync Error", description: "Could not clear cloud cart.", variant: "destructive" })
       }
     }
@@ -316,12 +321,12 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         clearCart,
         getItemCount,
         getSubtotal,
-        isLoading,
+        isLoading: isCartLoading, // Use cart's own loading state
         isCartOpen,
         openCart,
         closeCart,
         toggleCart,
-        isSupabaseConnected,
+        isCartSupabaseConnected,
       }}
     >
       {children}

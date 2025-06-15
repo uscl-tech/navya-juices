@@ -13,7 +13,9 @@ export default function AccountPage() {
   const router = useRouter()
 
   useEffect(() => {
+    // console.log('[AccountPage] Auth state check: isLoading:', isLoading, 'User:', user?.id);
     if (!isLoading && !user) {
+      // console.log('[AccountPage] Redirecting to login.');
       router.push("/login?redirect=/account")
     }
   }, [user, isLoading, router])
@@ -24,16 +26,18 @@ export default function AccountPage() {
   }
 
   if (isLoading || !user) {
-    // Combined loading and no-user check
+    // console.log('[AccountPage] Render: Loading or no user.');
     return (
       <div className="container py-12">
         <div className="max-w-4xl mx-auto">
-          <h1 className="text-3xl font-bold mb-8">Loading...</h1>
-          {/* You could add a ProfileSkeleton here */}
+          <h1 className="text-3xl font-bold mb-8">Loading Account Information...</h1>
+          {/* Consider adding a skeleton loader here */}
         </div>
       </div>
     )
   }
+
+  // console.log('[AccountPage] Render: Displaying account for user:', user?.id, 'Role:', userRole);
 
   return (
     <div className="container py-12">

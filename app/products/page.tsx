@@ -4,7 +4,7 @@ import { useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { motion } from "framer-motion"
-import { Filter, ChevronDown, ShoppingCart, PlusCircle, Edit } from "lucide-react" // Added PlusCircle, Edit
+import { Filter, ChevronDown, ShoppingCart, PlusCircle, Edit } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -12,10 +12,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useCart } from "@/context/cart-context"
-import { useAuth } from "@/context/auth-context" // Added useAuth
+import { useAuth } from "@/context/auth-context"
 import { getProductsByCategory } from "@/data/products"
-// import { ProductCardSkeleton } from "@/components/skeletons/product-card-skeleton" // Assuming you have this
+import type { Product } from "@/types/supabase" // Import Product type
 
+// ... (categories and sortOptions remain the same)
 const categories = [
   { value: "all", label: "All Products" },
   { value: "shots", label: "Wheatgrass Shots" },
@@ -33,20 +34,11 @@ const sortOptions = [
 export default function ProductsPage() {
   const [category, setCategory] = useState("all")
   const [sort, setSort] = useState("featured")
-  // const [isLoading, setIsLoading] = useState(true); // Example for skeleton
-  const { addItem } = useCart()
-  const { userRole } = useAuth() // Get user role
+  const { addToCart } = useCart() // Changed from addItem to addToCart
+  const { userRole } = useAuth()
 
-  // Simulate loading for skeleton
-  // useEffect(() => {
-  //   const timer = setTimeout(() => setIsLoading(false), 1500);
-  //   return () => clearTimeout(timer);
-  // }, []);
-
-  // Get products by category
   let filteredProducts = getProductsByCategory(category)
 
-  // Sort products
   filteredProducts = [...filteredProducts].sort((a, b) => {
     if (sort === "price-asc") {
       return Number.parseFloat(a.price.replace("$", "")) - Number.parseFloat(b.price.replace("$", ""))
@@ -55,19 +47,8 @@ export default function ProductsPage() {
     } else if (sort === "newest") {
       return a.new ? -1 : b.new ? 1 : 0
     }
-    // Default to featured
     return a.featured ? -1 : b.featured ? 1 : 0
   })
-
-  // if (isLoading) {
-  //   return (
-  //     <div className="container px-4 py-8">
-  //       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-  //         {[...Array(8)].map((_, i) => <ProductCardSkeleton key={i} />)}
-  //       </div>
-  //     </div>
-  //   );
-  // }
 
   return (
     <div className="min-h-screen">
@@ -157,7 +138,7 @@ export default function ProductsPage() {
                 <Link href={`/products/${product.slug}`} className="block">
                   <div className="aspect-square relative">
                     <Image
-                      src={product.image || "/placeholder.svg"}
+                      src={product.image || "/placeholder.svg?width=400&height=400&query=wheatgrass+product"}
                       alt={product.name}
                       fill
                       className="object-cover transition-transform group-hover:scale-105"
@@ -170,7 +151,11 @@ export default function ProductsPage() {
                         size="sm"
                         variant="secondary"
                         className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={(e) => e.stopPropagation()} // Prevent link navigation
+                        onClick={(e) => {
+                          e.preventDefault() // Prevent link navigation
+                          e.stopPropagation() // Stop event from bubbling to parent Link
+                          // Navigation will be handled by the Link component inside Button
+                        }}
                       >
                         <Link href={`/admin/products/${product.id}`}>
                           <Edit className="h-4 w-4" />
@@ -192,13 +177,24 @@ export default function ProductsPage() {
                             size="sm"
                             className="rounded-full"
                             onClick={(e) => {
-                              e.preventDefault() // Prevent link navigation if any
-                              addItem({
-                                id: product.id,
-                                name: product.name,
-                                price: product.price,
-                                image: product.image,
-                              })
+                              e.preventDefault()
+                              // Ensure 'product' from filteredProducts has all necessary fields for 'Product' type
+                              // or transform it accordingly.
+                              // Assuming 'product' has 'id', 'name', 'image', 'stock' and 'price' (string).
+                              // The 'Product' type expects 'price' as a number and 'id' as a number.
+                              const productForCart: Product = {
+                                ...product, // Spread existing fields
+                                id: Number(product.id), // Ensure id is a number
+                                price: Number.parseFloat(product.price.replace("$", "")), // Convert price to number
+                                // Ensure 'stock' is present and is a number.
+                                // If product.stock is not available, this might cause issues.
+                                // Defaulting to 0 if undefined, but ideally it should come from data.
+                                stock: product.stock || 0,
+                                // Ensure all other fields required by the Product type are present
+                                // or are optional in the Product type definition.
+                                // e.g. description, category_id etc.
+                              }
+                              addToCart(productForCart)
                             }}
                           >
                             <ShoppingCart className="h-4 w-4" />
