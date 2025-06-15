@@ -45,23 +45,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const fetchUserRole = useCallback(async (userId: string, currentSupabase: SupabaseClient) => {
     if (!userId) {
       console.warn("[AuthContext] fetchUserRole: No userId provided.")
-      return null
+      return "customer" // Default role
     }
     console.log(`[AuthContext] fetchUserRole: Fetching role for user ID: ${userId}`)
     try {
-      const { data, error, status } = await currentSupabase.from("profiles").select("role").eq("id", userId).single()
+      const { data, error, status } = await currentSupabase
+        .from("profiles")
+        .select("role")
+        .eq("id", userId)
+        .maybeSingle() // Use maybeSingle()
 
       if (error) {
-        console.error(`[AuthContext] fetchUserRole: Error fetching role. Status: ${status}`, error)
-        if (status === 404) console.warn(`[AuthContext] fetchUserRole: Profile not found for user ${userId}.`)
-        return null // Default to null if role cannot be fetched
+        // This error from maybeSingle() implies multiple rows were found for the user ID,
+        // which shouldn't happen if 'id' is a unique primary key.
+        console.error(
+          `[AuthContext] fetchUserRole: Error fetching role (Status: ${status}). Likely multiple profiles for user ${userId}:`,
+          error,
+        )
+        return "customer" // Fallback to a default role in case of unexpected error
       }
-      const role = data?.role || null
-      console.log(`[AuthContext] fetchUserRole: Successfully fetched role: ${role} for user ${userId}`)
+
+      if (!data) {
+        // No profile found for this user. This can happen for users created before the trigger.
+        console.warn(
+          `[AuthContext] fetchUserRole: Profile not found for user ${userId}. Assigning default role 'customer'.`,
+        )
+        // Optionally, you could attempt to create a profile here if critical,
+        // but that adds complexity to client-side auth context.
+        // For now, just assign a default role.
+        return "customer"
+      }
+
+      const role = data.role || "customer" // If profile exists but role is null, default to 'customer'
+      console.log(`[AuthContext] fetchUserRole: Successfully fetched role: '${role}' for user ${userId}`)
       return role
-    } catch (error) {
-      console.error("[AuthContext] fetchUserRole: Unexpected error:", error)
-      return null
+    } catch (catchError) {
+      // Catch any other unexpected errors during the fetch
+      console.error("[AuthContext] fetchUserRole: Unexpected error during role fetch:", catchError)
+      return "customer" // Fallback to a default role
     }
   }, [])
 
@@ -144,11 +165,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { error, data } = await supabase.auth.signInWithPassword({ email, password })
       if (error) {
+        // THIS IS WHERE THE "Invalid login credentials" ERROR IS CAUGHT AND LOGGED
         console.error("[AuthContext] signIn: Error:", error)
         setIsLoading(false)
-        return { error }
+        return { error } // The error object from Supabase is returned
       }
       console.log("[AuthContext] signIn: signInWithPassword successful. User:", data.user?.id)
+      // onAuthStateChange will handle setting user, session, role, and isLoading to false
       return { error: null }
     } catch (catchError: any) {
       console.error("[AuthContext] signIn: Unexpected error:", catchError)
@@ -174,20 +197,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log("[AuthContext] signUp: Successful. User:", data.user?.id)
       }
 
-      if (!data.session && data.user) {
-        // Typical for email verification pending
+      // Handle isLoading state based on signup outcome
+      if (error || (!data.session && data.user)) {
+        // Error occurred OR email verification is pending (no immediate session)
         setIsLoading(false)
       } else if (!data.user && !data.session && !error) {
-        // If signup returns no user, no session, and no error
+        // Unusual case: no user, no session, no error
         setIsLoading(false)
       }
-      // If there's an error, onAuthStateChange might not fire, or if it does, it will set isLoading.
-      // If signup is successful and leads to a state change (SIGNED_IN), onAuthStateChange handles isLoading.
-      // If signup is successful but requires email verification (no immediate session), isLoading needs to be false here.
+      // If signup is successful and leads to an immediate session,
+      // onAuthStateChange will handle setting isLoading to false.
 
       return { data, error }
     } catch (catchError: any) {
-      // THIS BLOCK RUNS WHEN "Failed to fetch" HAPPENS
       console.error("[AuthContext] signUp: Unexpected network or other error:", catchError)
       setIsLoading(false)
       return {
@@ -210,8 +232,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { error } = await supabase.auth.signOut()
     if (error) {
       console.error("[AuthContext] signOut: Error:", error)
-      setIsLoading(false)
     }
+    // onAuthStateChange will handle setting user, session, role to null and isLoading to false
   }
 
   const resetPassword = async (email: string) => {

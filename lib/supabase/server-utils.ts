@@ -46,26 +46,28 @@ export async function getAuthenticatedUserAndRole() {
 
   const user = session.user
 
-  // Fetch user role. This needs to align with how you store roles.
-  // Option 1: From a 'user_roles' table (adjust table/column names as needed)
-  /*
-  const { data: roleData, error: roleError } = await supabase
-    .from('user_roles')
-    .select('role')
-    .eq('user_id', user.id)
-    .single()
+  // Fetch user role from the 'profiles' table
+  const { data: profileData, error: profileError } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle() // Use maybeSingle()
 
-  if (roleError) {
-    console.error('Error fetching role from user_roles table:', roleError.message)
-    // Fallback or default role if not found, or handle error appropriately
-    return { user, role: 'customer', error: roleError }
+  if (profileError) {
+    // This error from maybeSingle() implies multiple rows were found.
+    console.error("Error fetching role from profiles table (likely multiple rows):", profileError.message)
+    return { user, role: "customer", error: profileError } // Default to 'customer' on error
   }
-  const role = roleData?.role || 'customer';
-  */
 
-  // Option 2: From user's app_metadata (as used in AuthContext and previous examples)
-  // Ensure app_metadata is populated correctly (e.g., via a trigger on user creation or admin update)
-  const role = user.app_metadata?.user_role || "customer" // Default to 'customer'
+  if (!profileData) {
+    // No profile found for this user.
+    console.warn(`Server-utils: Profile not found for user ${user.id}. Assigning default role 'customer'.`)
+    // This is a good place to consider if a server-side profile creation/repair mechanism is needed
+    // if a profile is absolutely expected. For now, default the role.
+    return { user, role: "customer", error: null }
+  }
+
+  const role = profileData.role || "customer" // Default to 'customer' if role is null in DB
 
   return { user, role: role as string, error: null }
 }

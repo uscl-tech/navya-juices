@@ -44,11 +44,11 @@ export function LoginForm() {
     setIsLoading(true)
     setError(null)
     try {
-      const { error } = await signIn(data.email, data.password)
-      if (error) {
-        setError(error.message)
+      const { error: signInError } = await signIn(data.email, data.password) // signIn from useAuth()
+      if (signInError) {
+        setError(signInError.message) // This sets the error message in the UI
       }
-      // On success, we do nothing here. The page will handle the redirect.
+      // On success, AuthContext's onAuthStateChange handles redirect via LoginPage
     } catch (err) {
       console.error("Login error:", err)
       setError("An unexpected error occurred. Please try again.")
